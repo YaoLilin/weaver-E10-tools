@@ -1,0 +1,61 @@
+{
+  "appId": "1290030935317807104",
+  "id": "1290030935317807104",
+  "appUUID": "1290030935317807105",
+  "name": "动作流Action参数自动获取",
+  "lockFlag": "n",
+  "officialFlag": "n",
+  "systemFlag": "n",
+  "debugFlag": "n",
+  "codes": {
+    "ActionParamTable.js": {
+      "id": "1290135526420119556",
+      "sourceId": "1308586383912312854",
+      "state": "n",
+      "compress": "n"
+    },
+    "config/config_default.js": {
+      "id": "1290030935317807111",
+      "sourceId": "0",
+      "state": "y",
+      "compress": "n"
+    },
+    "config/config.js": {
+      "id": "1290030935317807110",
+      "sourceId": "0",
+      "state": "y",
+      "compress": "n"
+    },
+    "config/configLoad_default.js": {
+      "id": "1290030935317807113",
+      "sourceId": "0",
+      "state": "n",
+      "compress": "n"
+    },
+    "config/configLoad.js": {
+      "id": "1290030935317807112",
+      "sourceId": "0",
+      "state": "n",
+      "compress": "n"
+    },
+    "entry.js": {
+      "id": "1290030935317807109",
+      "sourceId": "1291604229242355714",
+      "state": "y",
+      "compress": "n"
+    },
+    "README.md": {
+      "id": "1291618926662385666",
+      "sourceId": "1291622332504342528",
+      "state": "n",
+      "compress": "n"
+    }
+  },
+  "resources": {
+    "resources/1783929250-获取参数2.gif": {
+      "id": "1291622293757362191",
+      "fileId": "1291622293757362190",
+      "extension": "gif"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "appId": "578519188121377524",
+  "appUUID": "801378248580521305",
+  "id": "427989056440918117",
+  "name": "开发者工具",
+  "lockFlag": "n",
+  "officialFlag": "n",
+  "systemFlag": "n",
+  "debugFlag": "n",
+  "codes": {
+    "entry.js": {
+      "state": "y"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "appId": "1305269432046043136",
+  "id": "1305269432046043136",
+  "appUUID": "1305269432046043137",
+  "name": "流程表单助手",
+  "lockFlag": "n",
+  "officialFlag": "n",
+  "systemFlag": "n",
+  "debugFlag": "n",
+  "codes": {
+    "config/config_default.js": {
+      "id": "1305269432046043143",
+      "sourceId": "0",
+      "state": "y",
+      "compress": "n"
+    },
+    "config/config.js": {
+      "id": "1305269432046043142",
+      "sourceId": "1305275535211347970",
+      "state": "y",
+      "compress": "n"
+    },
+    "config/configLoad_default.js": {
+      "id": "1305269432046043145",
+      "sourceId": "0",
+      "state": "n",
+      "compress": "n"
+    },
+    "config/configLoad.js": {
+      "id": "1305269432046043144",
+      "sourceId": "0",
+      "state": "n",
+      "compress": "n"
+    },
+    "entry.js": {
+      "id": "1305269432046043141",
+      "sourceId": "1305371600803577872",
+      "state": "y",
+      "compress": "n"
+    },
+    "FlowFormAssistant.js": {
+      "id": "1305272498686246913",
+      "sourceId": "1305373816989925378",
+      "state": "n",
+      "compress": "n"
+    },
+    "README.md": {
+      "id": "1305375359017402372",
+      "sourceId": "1305375728208429057",
+      "state": "n",
+      "compress": "n"
+    }
+  },
+  "resources": {
+    "resources/1787131418-image.png": {
+      "id": "1305375500650659843",
+      "fileId": "1305375500650659842",
+      "extension": "png"
+    },
+    "resources/1787131443-image.png": {
+      "id": "1305375612412084233",
+      "fileId": "1305375612412084232",
+      "extension": "png"
+    }
+  }
+}
