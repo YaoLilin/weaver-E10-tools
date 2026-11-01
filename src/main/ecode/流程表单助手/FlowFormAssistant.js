@@ -1,6 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {Dialog, Icon, SlideTabs} from '@weapp/ui';
 import {devRequest} from '@weapp/ecodesdk';
+import AssistantDialogLayer from './components/AssistantDialogLayer';
+import CopyValue from './components/CopyValue';
 import FormDataTab from './components/FormDataTab';
 import config from './config/config';
 
@@ -104,9 +106,10 @@ function savePosition(position) {
 /**
  * 流程表单助手悬浮入口与侧边抽屉。
  *
+ * @param {{initialFormSdk?: object, dialogZIndex?: number}} props 侧栏打开时明确绑定的表单实例
  * @returns {React.ReactElement} 流程表单助手组件
  */
-const FlowFormAssistant = () => {
+const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [activeTab, setActiveTab] = useState('formFields');
     const [formData, setFormData] = useState(null);
@@ -118,7 +121,8 @@ const FlowFormAssistant = () => {
     const [position, setPosition] = useState(getInitialPosition);
     const [workflowInfo, setWorkflowInfo] = useState({});
     const [formModule, setFormModule] = useState(
-        window.location.pathname.startsWith('/sp/ebdfpage/card/') ? 'ebuilderform' : 'workflow',
+        initialFormSdk ? initialFormSdk.getBaseInfo().module
+            : (window.location.pathname.startsWith('/sp/ebdfpage/card/') ? 'ebuilderform' : 'workflow'),
     );
     const formSdkRef = useRef(null);
     const dragStateRef = useRef(null);
@@ -142,7 +146,7 @@ const FlowFormAssistant = () => {
      */
     const getFormInfo = () => {
         try {
-            formSdkRef.current = window.WeFormSDK.getWeFormInstance();
+            formSdkRef.current = initialFormSdk || window.WeFormSDK.getWeFormInstance();
             return formSdkRef.current.getBaseInfo() || {};
         } catch (error) {
             console.error('ecodeId:${appId}，流程表单助手获取表单信息失败', error);
@@ -401,10 +405,10 @@ const FlowFormAssistant = () => {
                         }}
                     >
                         <div style={{ color: 'var(--main-fc, #111111)', fontSize: 'var(--font-size-base, 14px)' }}>
-                            {node.nodeName}
+                            <CopyValue label="节点名称" value={node.nodeName} />
                         </div>
                         <div style={{ color: 'var(--secondary-fc, #999999)', fontSize: 'var(--font-size-sm, 12px)', marginTop: '4px' }}>
-                            ID：{node.id}
+                            ID：<CopyValue label="节点 ID" value={node.id} />
                         </div>
                     </div>
                 ))}
@@ -446,7 +450,7 @@ const FlowFormAssistant = () => {
                             {item.label}
                         </div>
                         <div style={{ color: 'var(--main-fc, #111111)', fontSize: 'var(--font-size-base, 14px)', marginTop: '4px' }}>
-                            {item.value || '-'}
+                            <CopyValue label={item.label} value={item.value} />
                         </div>
                     </div>
                 ))}
@@ -484,6 +488,7 @@ const FlowFormAssistant = () => {
                 title={assistantTitle}
                 visible={drawerVisible}
                 width={drawerWidth}
+                zIndex={dialogZIndex}
             >
                 <div className={'appid-${appId} seconddev-ecode flow-form-assistant-drawer'}>
                     <SlideTabs
@@ -492,12 +497,14 @@ const FlowFormAssistant = () => {
                         value={activeTab}
                     />
                     {activeTab === 'formFields' && (
-                        <FormDataTab
+                        <AssistantDialogLayer.Provider value={dialogZIndex}>
+                            <FormDataTab
                             error={formDataError}
                             formData={formData}
                             formSdk={getFormSdk()}
                             loading={formDataLoading}
-                        />
+                            />
+                        </AssistantDialogLayer.Provider>
                     )}
                     {activeTab === 'workflow' && renderWorkflowInfo()}
                     {activeTab === 'nodes' && !isEbuilderForm && renderNodeList()}

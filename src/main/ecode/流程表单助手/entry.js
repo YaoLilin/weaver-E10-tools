@@ -133,6 +133,106 @@ function observeRouteChange() {
     window[ROUTE_LISTENER_INITIALIZED_FLAG] = true;
 }
 
+/**
+ * 在 EB 记录侧栏中挂载助手，并随侧栏关闭清理；多层侧栏只展示最上层的助手。
+ * @param {Function} loadModule 加载助手业务组件的函数
+ */
+function observeEbuilderSidebar(loadModule) {
+    const contexts = [];
+    let activeContext;
+    let root;
+    let observer;
+    let generation = 0;
+
+    /** 移除当前助手，作废尚未完成的异步挂载。 */
+    const unmount = () => {
+        generation += 1;
+        if (root) {
+            ReactDOM.unmountComponentAtNode(root);
+            root.remove();
+            root = null;
+        }
+        activeContext = undefined;
+    };
+
+    /** 根据侧栏容器是否仍存在，恢复最上层可见表单的助手。 */
+    const sync = () => {
+        for (let index = contexts.length - 1; index >= 0; index -= 1) {
+            if (!contexts[index].container.isConnected) {
+                contexts.splice(index, 1);
+            }
+        }
+        const context = contexts.slice().reverse().find(item => item.container.getClientRects().length > 0);
+        if (context === activeContext) {
+            return;
+        }
+        unmount();
+        if (!context) {
+            if (contexts.length === 0 && observer) {
+                observer.disconnect();
+                observer = undefined;
+            }
+            return;
+        }
+        activeContext = context;
+        const version = generation;
+        root = document.createElement('div');
+        root.className = 'appid-${appId} seconddev-ecode flow-form-assistant-sidebar-root';
+        // 弹窗内容层包含 transform，固定定位入口应挂在外层，避免坐标偏移和裁切。
+        const host = context.container.closest('.ui-dialog-wrap') || context.container;
+        host.appendChild(root);
+        const target = root;
+        loadModule().then(module => {
+            if (version !== generation || !target.isConnected) {
+                return;
+            }
+            ReactDOM.render(
+                <window.ReactRouterDOM.BrowserRouter>
+                    <window.ReactRouterDOM.Route path="/" render={() => (
+                        <React.Suspense fallback={null}>
+                            <module.default
+                                initialFormSdk={context.sdk}
+                                dialogZIndex={Math.max(900, Number(window.getComputedStyle(host).zIndex) + 1 || 900)}
+                            />
+                        </React.Suspense>
+                    )} />
+                </window.ReactRouterDOM.BrowserRouter>,
+                target,
+            );
+            console.log('[ecode:${appId}-流程表单助手]:已挂载 EB 侧栏助手');
+        }).catch(error => {
+            console.error('[ecode:${appId}-流程表单助手]:挂载 EB 侧栏助手失败', error);
+            if (version === generation) {
+                unmount();
+            }
+        });
+    };
+
+    window.addEventListener('onFormReady', event => {
+        const detail = event.detail || {};
+        const standalonePage = window.location.pathname.startsWith('/sp/ebdfpage/card/');
+        if (detail.module !== 'ebuilderform' || standalonePage || !detail.formSdk) {
+            return;
+        }
+        const base = detail.formSdk.getBaseInfo();
+        const container = base.scrollContainer ? document.querySelector(base.scrollContainer) : null;
+        if (!container) {
+            return;
+        }
+        const previousIndex = contexts.findIndex(item => item.container === container);
+        if (previousIndex >= 0) {
+            contexts.splice(previousIndex, 1);
+        }
+        contexts.push({container, sdk: detail.formSdk});
+        if (!observer) {
+            observer = new MutationObserver(sync);
+            observer.observe(document.body, {childList: true, subtree: true});
+        }
+        sync();
+    });
+}
+
+observeEbuilderSidebar(loadFlowFormAssistantModule);
 observeRouteChange();
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', syncAssistant, { once: true });
