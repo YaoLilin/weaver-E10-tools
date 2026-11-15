@@ -14,15 +14,18 @@ export async function copyText(text) {
     const input = document.createElement('textarea');
     input.value = text;
     input.setAttribute('readonly', '');
-    input.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
-    document.body.appendChild(input);
+    input.className = 'ffa-clipboard-input';
+    const container = document.createElement('div');
+    container.className = 'app-1305269432046043137 seconddev-ecode';
+    container.appendChild(input);
+    document.body.appendChild(container);
     try {
         input.select();
         if (!document.execCommand('copy')) {
             throw new Error('浏览器未允许写入剪贴板');
         }
     } finally {
-        input.remove();
+        container.remove();
         if (activeElement && activeElement.focus) {
             activeElement.focus({preventScroll: true});
         }

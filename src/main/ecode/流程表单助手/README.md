@@ -60,7 +60,7 @@ export default {
 };
 ```
 
-- `drawerWidth`：抽屉宽度，支持百分比，如 `'40%'`；也支持像素值，如 `'480px'`。
+- `drawerWidth`：抽屉宽度，支持百分比，如 `'40%'`；也支持像素值，如 `'480px'`。优先使用 `config/config.js` 的有效配置；属性缺失或格式无效时，使用 `config/config_default.js` 中的默认值（当前为 `'60%'`）。
 
 ## 数据获取说明
 
@@ -93,3 +93,7 @@ export default {
   </div>
   <span>yaolilin.com</span>
 </div>
+
+## 样式维护
+
+样式统一维护在应用根目录 `index.css`，所有规则以当前应用 UUID 类名 `.app-1305269432046043137` 为父级。助手根节点、抽屉及字段信息对话框的 Portal 外层均带有该类名。样式文件配置为前置加载；悬浮按钮拖动坐标仅通过 CSS 变量传入，定位规则由 CSS 定义。

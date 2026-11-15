@@ -49,6 +49,10 @@
       "sourceId": "1305375728208429057",
       "state": "n",
       "compress": "n"
+    },
+    "index.css": {
+      "state": "y",
+      "compress": "n"
     }
   },
   "resources": {

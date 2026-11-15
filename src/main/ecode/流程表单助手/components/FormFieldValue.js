@@ -34,23 +34,22 @@ const FormFieldValue = ({
     return (
         <div className={'appid-${appId} seconddev-ecode flow-form-assistant-field-value'}>
             {(showLabel || showModeButton) && (
-                <div style={fieldHeaderStyle}>
+                <div className="ffa-field-header">
                     {showLabel && (
-                        <span style={fieldLabelStyle}>
+                        <span className="ffa-field-label">
                             {field.label}
                         </span>
                     )}
                     {showModeButton && (
-                        <span style={{display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0}}>
+                        <span className="ffa-field-actions">
                             <FieldInfoButton field={field} />
                             <button
                                 aria-label={isComponentMode ? '切换为文本模式' : '切换为组件模式'}
-                                className={'appid-${appId} seconddev-ecode'}
+                                className="appid-${appId} seconddev-ecode ffa-mode-button"
                                 onClick={() => onModeChange(field.id, isComponentMode ? 'input' : 'component')}
-                                style={modeButtonStyle}
                                 type="button"
                             >
-                                <span aria-hidden="true" style={switchIconStyle}>⇄</span>
+                                <span aria-hidden="true" className="ffa-switch-icon">⇄</span>
                                 {isComponentMode ? '组件模式' : '文本模式'}
                             </button>
                         </span>
@@ -90,12 +89,12 @@ function getComponentDefinition(formSdk, field) {
             return { config: { ...fieldConfig, readOnly: true, disabled: true }, source: 'sdk' };
         }
     } catch (error) {
-        console.error('ecodeId:${appId}，流程表单助手读取字段组件配置失败', { error, fieldId: field.id });
+        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段组件配置失败', { error, fieldId: field.id });
     }
     if (!field.componentKey || !field.componentConfig) {
         return null;
     }
-    console.log('ecodeId:${appId}，流程表单助手使用后端字段组件配置', { fieldId: field.id });
+    console.log('[ecode:${appId}-流程表单助手]:流程表单助手使用后端字段组件配置', { fieldId: field.id });
     return {
         config: {
             ...field.componentConfig,
@@ -134,7 +133,7 @@ function getRawFieldText(formSdk, field, rowIndex) {
         const sdkValue = formSdk.getFieldValue(fieldMark);
         return sdkValue === undefined || sdkValue === null ? '' : String(sdkValue);
     } catch (error) {
-        console.error('ecodeId:${appId}，流程表单助手读取字段原始值失败', { error, fieldId: field.id, rowIndex });
+        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段原始值失败', { error, fieldId: field.id, rowIndex });
         return '';
     }
 }
@@ -164,7 +163,7 @@ function getComponentFieldData(formSdk, field, rowIndex, source) {
             value: formSdk.weFormApi.formStore.getWidgetData(field.id, rowId),
         };
     } catch (error) {
-        console.error('ecodeId:${appId}，流程表单助手读取字段组件值失败', { error, fieldId: field.id, rowIndex });
+        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段组件值失败', { error, fieldId: field.id, rowIndex });
         return null;
     }
 }
@@ -191,32 +190,5 @@ function getBackendComponentFieldData(field) {
         value: { ...backendValue, content, dataOptions },
     };
 }
-
-const fieldHeaderStyle = {
-    alignItems: 'center',
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'space-between',
-    marginBottom: '6px',
-};
-const modeButtonStyle = {
-    background: 'transparent',
-    border: '1px solid var(--primary, #5d9cec)',
-    borderRadius: '3px',
-    color: 'var(--primary, #5d9cec)',
-    cursor: 'pointer',
-    flexShrink: 0,
-    fontSize: '12px',
-    lineHeight: '20px',
-    padding: '0 6px',
-};
-const switchIconStyle = { fontSize: '14px', marginRight: '4px' };
-const fieldLabelStyle = {
-    color: 'var(--secondary-fc, #666666)',
-    fontSize: 'var(--font-size-sm, 12px)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-};
 
 export default FormFieldValue;

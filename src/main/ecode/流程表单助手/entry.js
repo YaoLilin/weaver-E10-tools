@@ -26,7 +26,7 @@ async function loadFlowFormAssistantModule() {
                 }),
             ]);
             if (module && module.default) {
-                console.debug('ecodeId:${appId}，流程表单助手业务模块异步加载成功');
+                console.debug('[ecode:${appId}-流程表单助手]:流程表单助手业务模块异步加载成功');
                 return module;
             }
             lastError = new Error('流程表单助手模块未返回默认组件');
@@ -80,12 +80,12 @@ function mountAssistant() {
                     </window.ReactRouterDOM.BrowserRouter>,
                     root,
                 );
-                console.log('ecodeId:${appId}，已在流程表单页面挂载流程表单助手');
+                console.log('[ecode:${appId}-流程表单助手]:已在流程表单页面挂载流程表单助手');
             }
         })
         .catch(error => {
             root.remove();
-            console.error('ecodeId:${appId}，流程表单助手业务模块加载失败', error);
+            console.error('[ecode:${appId}-流程表单助手]:流程表单助手业务模块加载失败', error);
         });
 }
 
@@ -203,6 +203,11 @@ function observeEbuilderSidebar(loadModule) {
         }).catch(error => {
             console.error('[ecode:${appId}-流程表单助手]:挂载 EB 侧栏助手失败', error);
             if (version === generation) {
+                // 本次表单挂载失败后停止自动重挂，避免 DOM 变化触发连续失败。
+                const failedIndex = contexts.indexOf(context);
+                if (failedIndex >= 0) {
+                    contexts.splice(failedIndex, 1);
+                }
                 unmount();
             }
         });

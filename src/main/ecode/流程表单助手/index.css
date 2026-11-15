@@ -1,0 +1,282 @@
+/* 流程表单助手样式：所有规则限定在当前应用 UUID 下。 */
+
+.app-1305269432046043137 .ffa-trigger {
+    align-items: center;
+    background: var(--primary, #5d9cec);
+    border: none;
+    border-radius: 50%;
+    box-shadow: var(--box-shadow, 0 3px 12px rgba(0, 0, 0, 0.12));
+    color: var(--base-white, #ffffff);
+    display: flex;
+    height: 38px;
+    justify-content: center;
+    padding: 0;
+    position: fixed;
+    touch-action: none;
+    user-select: none;
+    width: 38px;
+    z-index: calc(var(--dialog-draw-zindex, 900) - 1);
+    cursor: grab;
+    left: var(--assistant-left);
+    top: var(--assistant-top);
+}
+
+.app-1305269432046043137 .ffa-trigger-icon {
+    font-size: 20px;
+    line-height: 1;
+    height: 20px;
+    width: 20px;
+}
+
+.app-1305269432046043137 .ffa-trigger.is-dragging {
+    cursor: grabbing;
+}
+
+.app-1305269432046043137 .ffa-copy-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+
+.app-1305269432046043137 .ffa-copy-text {
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.app-1305269432046043137 .ffa-copy-button {
+    background: transparent;
+    border: 0;
+    color: var(--secondary-fc, #999999);
+    cursor: pointer;
+    padding: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.app-1305269432046043137 .ffa-copy-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.app-1305269432046043137 .ffa-copy-feedback {
+    font-size: 12px;
+    color: var(--secondary-fc, #999999);
+}
+
+.app-1305269432046043137 .ffa-detail-section {
+    margin-top: 28px;
+}
+
+.app-1305269432046043137 .ffa-detail-title {
+    color: var(--main-fc, #111111);
+    font-size: 18px;
+    margin: 0 0 14px;
+}
+
+.app-1305269432046043137 .ffa-detail-table {
+    width: 100%;
+}
+
+.app-1305269432046043137 .ffa-column-heading {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.app-1305269432046043137 .ffa-field-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.app-1305269432046043137 .ffa-detail-mode-button {
+    background: transparent;
+    border: 1px solid var(--primary, #5d9cec);
+    border-radius: 3px;
+    color: var(--primary, #5d9cec);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 20px;
+    padding: 0 6px;
+}
+
+.app-1305269432046043137 .ffa-switch-icon {
+    font-size: 14px;
+    margin-right: 4px;
+}
+
+.app-1305269432046043137 .ffa-detail-table th {
+    vertical-align: middle;
+}
+
+.app-1305269432046043137 .ffa-detail-table td.ffa-detail-cell {
+    vertical-align: top;
+}
+
+.app-1305269432046043137 .ffa-detail-pagination {
+    margin-top: 12px;
+}
+
+.app-1305269432046043137 .ffa-field-info-button {
+    background: transparent;
+    border: 0;
+    color: var(--primary, #5d9cec);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 6px;
+    flex-shrink: 0;
+}
+
+.app-1305269432046043137 .ffa-field-info-content {
+    padding: 8px 16px 16px;
+    overflow-wrap: anywhere;
+}
+
+.app-1305269432046043137 .ffa-info-row {
+    border-bottom: var(--border-solid, 1px solid #e5e5e5);
+    padding: 12px 0;
+}
+
+.app-1305269432046043137 .ffa-info-label {
+    color: var(--secondary-fc, #999999);
+    font-size: var(--font-size-sm, 12px);
+}
+
+.app-1305269432046043137 .ffa-field-info-value {
+    color: var(--main-fc, #111111);
+    font-size: var(--font-size-base, 14px);
+    margin-top: 4px;
+    user-select: text;
+}
+
+.app-1305269432046043137 .ffa-message {
+    color: var(--secondary-fc, #999999);
+    padding: 16px;
+}
+
+.app-1305269432046043137 .ffa-error-message {
+    color: var(--danger, #ff4d4f);
+    padding: 16px;
+}
+
+.app-1305269432046043137 .ffa-form-data {
+    padding: 16px;
+}
+
+.app-1305269432046043137 .ffa-field-search {
+    border: var(--border-solid, 1px solid #e5e5e5);
+    border-radius: var(--border-radius-base, 4px);
+    color: var(--main-fc, #111111);
+    box-sizing: border-box;
+    display: block;
+    font-size: 13px;
+    margin-bottom: 18px;
+    padding: 7px 10px;
+    width: 100%;
+}
+
+.app-1305269432046043137 .ffa-main-title {
+    color: var(--main-fc, #111111);
+    font-size: 18px;
+    margin: 0 0 14px;
+}
+
+.app-1305269432046043137 .ffa-main-field-section {
+    margin-bottom: 18px;
+}
+
+.app-1305269432046043137 .ffa-group-title {
+    color: var(--secondary-fc, #666666);
+    font-size: 14px;
+    margin: 0 0 10px;
+}
+
+.app-1305269432046043137 .ffa-empty-toggle {
+    background: transparent;
+    border: 0;
+    color: var(--primary, #5d9cec);
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 10px;
+    padding: 0;
+}
+
+.app-1305269432046043137 .ffa-main-field-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.app-1305269432046043137 .ffa-main-field-card {
+    background: var(--base-white, #ffffff);
+    border: var(--border-solid, 1px solid #e5e5e5);
+    border-radius: var(--border-radius-base, 4px);
+    min-width: 0;
+    padding: 12px;
+}
+
+.app-1305269432046043137 .ffa-field-header {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.app-1305269432046043137 .ffa-field-label {
+    color: var(--secondary-fc, #666666);
+    font-size: var(--font-size-sm, 12px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-1305269432046043137 .ffa-mode-button {
+    background: transparent;
+    border: 1px solid var(--primary, #5d9cec);
+    border-radius: 3px;
+    color: var(--primary, #5d9cec);
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 20px;
+    padding: 0 6px;
+}
+
+.app-1305269432046043137 .ffa-info-content {
+    padding: 8px 16px 16px;
+}
+
+.app-1305269432046043137 .ffa-info-value {
+    color: var(--main-fc, #111111);
+    font-size: var(--font-size-base, 14px);
+    margin-top: 4px;
+}
+
+.app-1305269432046043137 .ffa-node-title {
+    color: var(--main-fc, #111111);
+    font-size: var(--font-size-base, 14px);
+}
+
+.app-1305269432046043137 .ffa-node-id {
+    color: var(--secondary-fc, #999999);
+    font-size: var(--font-size-sm, 12px);
+    margin-top: 4px;
+}
+
+.app-1305269432046043137 .ffa-clipboard-input {
+    position: fixed;
+    left: -9999px;
+    top: 0;
+    opacity: 0;
+}
+
+.app-1305269432046043137 .ffa-field-info-icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}

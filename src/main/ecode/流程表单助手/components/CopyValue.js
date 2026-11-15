@@ -23,29 +23,22 @@ const CopyValue = ({label, value, emptyText = '-'}) => {
     };
 
     return (
-        <span className={'appid-${appId} seconddev-ecode flow-form-assistant-copy-value'} style={containerStyle}>
-            <span style={{overflowWrap: 'anywhere', userSelect: 'text'}}>{hasValue ? String(value) : emptyText}</span>
+        <span className="appid-${appId} seconddev-ecode flow-form-assistant-copy-value ffa-copy-value">
+            <span className="ffa-copy-text">{hasValue ? String(value) : emptyText}</span>
             {hasValue && (
                 <button
                     aria-label={`复制${label}`}
-                    className={'appid-${appId} seconddev-ecode flow-form-assistant-copy-button'}
+                    className="appid-${appId} seconddev-ecode flow-form-assistant-copy-button ffa-copy-button"
                     onClick={handleCopy}
-                    style={buttonStyle}
                     title={`复制${label}`}
                     type="button"
                 >
-                    <Icon name="Icon-copy" style={{width: 14, height: 14}} />
+                    <Icon name="Icon-copy" className="ffa-copy-icon" />
                 </button>
             )}
-            <span role="status" style={{fontSize: '12px', color: 'var(--secondary-fc, #999999)'}}>{feedback}</span>
+            <span role="status" className="ffa-copy-feedback">{feedback}</span>
         </span>
     );
-};
-
-const containerStyle = {display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', maxWidth: '100%'};
-const buttonStyle = {
-    background: 'transparent', border: 0, color: 'var(--secondary-fc, #999999)',
-    cursor: 'pointer', padding: '0 2px', display: 'inline-flex', alignItems: 'center', flexShrink: 0,
 };
 
 export default CopyValue;

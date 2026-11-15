@@ -1,4 +1,5 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
+import {devRequest} from '@weapp/ecodesdk';
 import DetailTable from './DetailTable';
 import FormFieldValue from './FormFieldValue';
 import {createFormDataViewModel, filterDetailTables, groupMainFields} from './formDataAdapter';
@@ -6,10 +7,67 @@ import {createFormDataViewModel, filterDetailTables, groupMainFields} from './fo
 /**
  * 展示流程主表及全部明细字段的标签页。
  *
- * @param {{error: string, formData: object, formSdk: object, loading: boolean}} props 组件参数
+ * @param {{formInfo: object, formSdk: object, active: boolean}} props 当前表单基础信息、SDK 和标签页是否选中
  * @returns {React.ReactElement} 表单字段标签页
  */
-const FormDataTab = ({ error, formData, formSdk, loading }) => {
+const FormDataTab = ({formInfo, formSdk, active}) => {
+    const [formData, setFormData] = useState(null);
+    const [error, setFormDataError] = useState('');
+    const [loading, setFormDataLoading] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        /** 查询当前表单的完整字段和值，并在标签页卸载后忽略返回结果。 */
+        const loadFormData = async formInfo => {
+            const { dataId, formId } = formInfo;
+            if (!formId || !dataId) {
+                setFormData(null);
+                setFormDataError('未获取到当前表单字段查询参数');
+                console.error('[ecode:${appId}-流程表单助手]:流程表单助手未获取到表单字段查询参数', {
+                    dataId,
+                    formId,
+                });
+                return;
+            }
+
+            setFormDataLoading(true);
+            setFormDataError('');
+            try {
+                console.debug('[ecode:${appId}-流程表单助手]:流程表单助手请求表单字段', { dataId, formId });
+                const responseData = await devRequest({
+                    url: '/api/secondev/hnweaver/form-assist/field-value',
+                    method: 'GET',
+                    params: { dataId, formId, module: formInfo.module },
+                });
+                if (responseData.status !== true) {
+                    throw new Error(responseData.msg || '表单字段请求失败');
+                }
+                if (cancelled) {
+                    return;
+                }
+                setFormData(responseData.data);
+                console.debug('[ecode:${appId}-流程表单助手]:流程表单助手表单字段请求成功', {
+                    mainFieldCount: responseData.data.mainFields.length,
+                    detailTableCount: responseData.data.detailTables.length,
+                    formId,
+                });
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+                setFormData(null);
+                setFormDataError(error.message || '表单字段加载失败');
+                console.error('[ecode:${appId}-流程表单助手]:流程表单助手请求表单字段失败', error);
+            } finally {
+                if (!cancelled) {
+                    setFormDataLoading(false);
+                }
+            }
+        };
+
+        loadFormData(formInfo);
+        return () => { cancelled = true; };
+    }, [formInfo]);
+
     const [mainFieldModes, setMainFieldModes] = useState({});
     const [searchKeyword, setSearchKeyword] = useState('');
     const [emptyFieldsExpanded, setEmptyFieldsExpanded] = useState(false);
@@ -37,37 +95,39 @@ const FormDataTab = ({ error, formData, formSdk, loading }) => {
      */
     const changeMainFieldMode = (fieldId, mode) => {
         setMainFieldModes(currentModes => ({ ...currentModes, [fieldId]: mode }));
-        console.log('ecodeId:${appId}，流程表单助手已切换主表字段显示模式', { fieldId, mode });
+        console.log('[ecode:${appId}-流程表单助手]:流程表单助手已切换主表字段显示模式', { fieldId, mode });
     };
 
+    if (!active) {
+        return null;
+    }
     if (loading) {
-        return <div style={messageStyle}>表单字段加载中...</div>;
+        return <div className="ffa-message">表单字段加载中...</div>;
     }
     if (error) {
-        return <div style={{ ...messageStyle, color: 'var(--danger, #ff4d4f)' }}>{error}</div>;
+        return <div className="ffa-error-message">{error}</div>;
     }
     if (!viewModel) {
-        return <div style={messageStyle}>暂无表单字段数据</div>;
+        return <div className="ffa-message">暂无表单字段数据</div>;
     }
 
     return (
-        <div className={'appid-${appId} seconddev-ecode flow-form-assistant-form-data'} style={containerStyle}>
+        <div className="appid-${appId} seconddev-ecode flow-form-assistant-form-data ffa-form-data">
             <input
                 aria-label="搜索表单字段"
-                className={'appid-${appId} seconddev-ecode flow-form-assistant-field-search'}
+                className="appid-${appId} seconddev-ecode flow-form-assistant-field-search ffa-field-search"
                 maxLength={200}
                 onChange={event => setSearchKeyword(event.target.value)}
                 placeholder="搜索主表或明细字段的名称、数据库字段名、字段 ID 或字段值"
-                style={searchInputStyle}
                 type="search"
                 value={searchKeyword}
             />
             {(!searching || hasMainMatches) && (
                 <React.Fragment>
-                    <h2 style={mainTitleStyle}>主表字段</h2>
+                    <h2 className="ffa-main-title">主表字段</h2>
                     {(!searching || mainFieldGroups.valued.length > 0) && (
-                        <section aria-label="有值字段" style={mainFieldSectionStyle}>
-                            <h3 style={groupTitleStyle}>有值字段（{mainFieldGroups.valued.length}）</h3>
+                        <section aria-label="有值字段" className="ffa-main-field-section">
+                            <h3 className="ffa-group-title">有值字段（{mainFieldGroups.valued.length}）</h3>
                             <MainFieldGrid
                                 fields={mainFieldGroups.valued}
                                 formSdk={formSdk}
@@ -77,15 +137,14 @@ const FormDataTab = ({ error, formData, formSdk, loading }) => {
                         </section>
                     )}
                     {(!searching || mainFieldGroups.empty.length > 0) && (
-                        <section aria-label="无值字段" style={mainFieldSectionStyle}>
+                        <section aria-label="无值字段" className="ffa-main-field-section">
                             {searching ? (
-                                <h3 style={groupTitleStyle}>无值字段（{mainFieldGroups.empty.length}）</h3>
+                                <h3 className="ffa-group-title">无值字段（{mainFieldGroups.empty.length}）</h3>
                             ) : (
                                 <button
                                     aria-expanded={showEmptyFields}
-                                    className={'appid-${appId} seconddev-ecode flow-form-assistant-empty-toggle'}
+                                    className="appid-${appId} seconddev-ecode flow-form-assistant-empty-toggle ffa-empty-toggle"
                                     onClick={() => setEmptyFieldsExpanded(expanded => !expanded)}
-                                    style={emptyToggleStyle}
                                     type="button"
                                 >
                                     {showEmptyFields ? '收起' : '展开'}无值字段（{mainFieldGroups.empty.length}）
@@ -107,7 +166,7 @@ const FormDataTab = ({ error, formData, formSdk, loading }) => {
                 <DetailTable formSdk={formSdk} key={table.id} table={table} />
             ))}
             {searching && !hasMainMatches && detailTables.length === 0 && (
-                <div style={messageStyle}>暂无匹配字段</div>
+                <div className="ffa-message">暂无匹配字段</div>
             )}
         </div>
     );
@@ -121,12 +180,12 @@ const FormDataTab = ({ error, formData, formSdk, loading }) => {
  */
 const MainFieldGrid = ({ fields, formSdk, modes, onModeChange }) => {
     if (fields.length === 0) {
-        return <div style={messageStyle}>暂无匹配字段</div>;
+        return <div className="ffa-message">暂无匹配字段</div>;
     }
     return (
-        <div style={mainFieldGridStyle}>
+        <div className="ffa-main-field-grid">
             {fields.map(field => (
-                <div key={field.id} style={mainFieldCardStyle}>
+                <div key={field.id} className="ffa-main-field-card">
                     <FormFieldValue
                         field={field}
                         formSdk={formSdk}
@@ -137,44 +196,6 @@ const MainFieldGrid = ({ fields, formSdk, modes, onModeChange }) => {
             ))}
         </div>
     );
-};
-
-const containerStyle = { padding: '16px' };
-const messageStyle = { color: 'var(--secondary-fc, #999999)', padding: '16px' };
-const mainTitleStyle = { color: 'var(--main-fc, #111111)', fontSize: '18px', margin: '0 0 14px' };
-const searchInputStyle = {
-    border: 'var(--border-solid, 1px solid #e5e5e5)',
-    borderRadius: 'var(--border-radius-base, 4px)',
-    color: 'var(--main-fc, #111111)',
-    boxSizing: 'border-box',
-    display: 'block',
-    fontSize: '13px',
-    marginBottom: '18px',
-    padding: '7px 10px',
-    width: '100%',
-};
-const mainFieldSectionStyle = { marginBottom: '18px' };
-const groupTitleStyle = { color: 'var(--secondary-fc, #666666)', fontSize: '14px', margin: '0 0 10px' };
-const emptyToggleStyle = {
-    background: 'transparent',
-    border: 0,
-    color: 'var(--primary, #5d9cec)',
-    cursor: 'pointer',
-    fontSize: '14px',
-    marginBottom: '10px',
-    padding: 0,
-};
-const mainFieldGridStyle = {
-    display: 'grid',
-    gap: '12px',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-};
-const mainFieldCardStyle = {
-    background: 'var(--base-white, #ffffff)',
-    border: 'var(--border-solid, 1px solid #e5e5e5)',
-    borderRadius: 'var(--border-radius-base, 4px)',
-    minWidth: 0,
-    padding: '12px',
 };
 
 export default FormDataTab;
