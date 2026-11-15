@@ -134,10 +134,10 @@ function observeRouteChange() {
 }
 
 /**
- * 在 EB 记录侧栏中挂载助手，并随侧栏关闭清理；多层侧栏只展示最上层的助手。
+ * 在工作流和 EB 表单弹层中挂载助手，关闭时清理，多层弹窗只展示最上层助手。
  * @param {Function} loadModule 加载助手业务组件的函数
  */
-function observeEbuilderSidebar(loadModule) {
+function observeFormDialogs(loadModule) {
     const contexts = [];
     let activeContext;
     let root;
@@ -155,7 +155,7 @@ function observeEbuilderSidebar(loadModule) {
         activeContext = undefined;
     };
 
-    /** 根据侧栏容器是否仍存在，恢复最上层可见表单的助手。 */
+    /** 根据弹层容器是否仍存在，恢复最上层可见表单的助手。 */
     const sync = () => {
         for (let index = contexts.length - 1; index >= 0; index -= 1) {
             if (!contexts[index].container.isConnected) {
@@ -188,7 +188,10 @@ function observeEbuilderSidebar(loadModule) {
             }
             ReactDOM.render(
                 <window.ReactRouterDOM.BrowserRouter>
-                    <window.ReactRouterDOM.Route path="/" render={() => (
+                    <window.ReactRouterDOM.Route
+                        path={context.pathname ? '/sp/workflow/flowpage/:mode/:requestId' : '/'}
+                        location={context.pathname ? {pathname: context.pathname} : undefined}
+                        render={() => (
                         <React.Suspense fallback={null}>
                             <module.default
                                 initialFormSdk={context.sdk}
@@ -199,9 +202,9 @@ function observeEbuilderSidebar(loadModule) {
                 </window.ReactRouterDOM.BrowserRouter>,
                 target,
             );
-            console.log('[ecode:${appId}-流程表单助手]:已挂载 EB 侧栏助手');
+            console.log('[ecode:${appId}-流程表单助手]:已挂载表单弹层助手');
         }).catch(error => {
-            console.error('[ecode:${appId}-流程表单助手]:挂载 EB 侧栏助手失败', error);
+            console.error('[ecode:${appId}-流程表单助手]:挂载表单弹层助手失败', error);
             if (version === generation) {
                 // 本次表单挂载失败后停止自动重挂，避免 DOM 变化触发连续失败。
                 const failedIndex = contexts.indexOf(context);
@@ -215,20 +218,28 @@ function observeEbuilderSidebar(loadModule) {
 
     window.addEventListener('onFormReady', event => {
         const detail = event.detail || {};
-        const standalonePage = window.location.pathname.startsWith('/sp/ebdfpage/card/');
-        if (detail.module !== 'ebuilderform' || standalonePage || !detail.formSdk) {
+        const supportedModule = detail.module === 'workflow' || detail.module === 'ebuilderform';
+        if (!supportedModule || !detail.formSdk) {
             return;
         }
         const base = detail.formSdk.getBaseInfo();
-        const container = base.scrollContainer ? document.querySelector(base.scrollContainer) : null;
-        if (!container) {
+        const container = typeof base.scrollContainer === 'string'
+            ? document.querySelector(base.scrollContainer)
+            : base.scrollContainer;
+        const isDialogContainer = container && container.nodeType === 1
+            && container.closest('.ui-dialog-wrap');
+        if (!isDialogContainer) {
             return;
         }
         const previousIndex = contexts.findIndex(item => item.container === container);
         if (previousIndex >= 0) {
             contexts.splice(previousIndex, 1);
         }
-        contexts.push({container, sdk: detail.formSdk});
+        const requestId = base.customParam && base.customParam.requestId;
+        const pathname = detail.module === 'workflow' && requestId
+            ? `/sp/workflow/flowpage/view/${requestId}`
+            : undefined;
+        contexts.push({container, sdk: detail.formSdk, pathname});
         if (!observer) {
             observer = new MutationObserver(sync);
             observer.observe(document.body, {childList: true, subtree: true});
@@ -237,7 +248,7 @@ function observeEbuilderSidebar(loadModule) {
     });
 }
 
-observeEbuilderSidebar(loadFlowFormAssistantModule);
+observeFormDialogs(loadFlowFormAssistantModule);
 observeRouteChange();
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', syncAssistant, { once: true });
