@@ -163,6 +163,10 @@
     padding: 16px;
 }
 
+.app-1305269432046043137 .ffa-edit-confirmation-warning {
+    color: var(--danger, #ff4d4f);
+}
+
 .app-1305269432046043137 .ffa-form-data {
     padding: 16px;
 }
@@ -279,4 +283,73 @@
     width: 16px;
     height: 16px;
     fill: currentColor;
+}
+
+.app-1305269432046043137 .ffa-edit-button {
+    background: transparent;
+    border: 0;
+    color: var(--primary, #5d9cec);
+    cursor: pointer;
+    padding: 2px 4px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.app-1305269432046043137 .ffa-edit-button:disabled {
+    color: var(--disabled-fc, #cccccc);
+    cursor: not-allowed;
+}
+
+.app-1305269432046043137 .ffa-editable-cell {
+    position: relative;
+    padding-right: 28px;
+    min-height: 24px;
+}
+
+.app-1305269432046043137 .ffa-cell-edit-action {
+    position: absolute;
+    right: 0;
+    top: 0;
+    visibility: hidden;
+}
+
+.app-1305269432046043137 .ffa-editable-cell:hover .ffa-cell-edit-action,
+.app-1305269432046043137 .ffa-editable-cell:focus-within .ffa-cell-edit-action,
+.app-1305269432046043137 .ffa-editable-cell.is-editing .ffa-cell-edit-action {
+    visibility: visible;
+}
+
+.app-1305269432046043137 .ffa-detail-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.app-1305269432046043137 .ffa-detail-toolbar .ffa-detail-title {
+    margin: 0;
+}
+
+.app-1305269432046043137 .ffa-field-header .ffa-field-actions {
+    gap: 2px;
+}
+
+.app-1305269432046043137 .ffa-field-header .ffa-edit-button {
+    padding: 2px;
+}
+
+.app-1305269432046043137 .ffa-field-header .ffa-field-info-button {
+    align-items: center;
+    display: inline-flex;
+    padding: 0 2px;
+}
+
+.app-1305269432046043137 .ffa-editable-cell.is-editing {
+    padding-right: 52px;
+}
+
+.app-1305269432046043137 .ffa-cell-edit-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
 }

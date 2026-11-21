@@ -1,6 +1,8 @@
 package com.weaver.seconddev.hnweaver.common.formassist.domain.dto;
 
 import lombok.Data;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import java.util.List;
 
@@ -18,8 +20,9 @@ public class FormDetailRowDTO {
     private Long dataIndex;
 
     /**
-     * 明细行 ID
+     * 明细行 ID；响应按字符串输出，避免浏览器丢失长整型精度。
      */
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long rowId;
 
     /**

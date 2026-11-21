@@ -1,25 +1,28 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {devRequest} from '@weapp/ecodesdk';
+import FormEditContext from './FormEditContext';
 import DetailTable from './DetailTable';
 import FormFieldValue from './FormFieldValue';
-import {createFormDataViewModel, filterDetailTables, groupMainFields} from './formDataAdapter';
+import {createFormDataViewModel, filterDetailTables, groupMainFields, readLayoutFormData} from './formDataAdapter';
 
 /**
  * 展示流程主表及全部明细字段的标签页。
  *
- * @param {{formInfo: object, formSdk: object, active: boolean}} props 当前表单基础信息、SDK 和标签页是否选中
+ * @param {{formInfo: object, formSdk: object, active: boolean, confirmChange: Function}} props 表单信息、SDK、激活状态和保存确认入口
  * @returns {React.ReactElement} 表单字段标签页
  */
-const FormDataTab = ({formInfo, formSdk, active}) => {
+const FormDataTab = ({formInfo, formSdk, active, confirmChange}) => {
+    const [revision, setRevision] = useState(0);
     const [formData, setFormData] = useState(null);
     const [error, setFormDataError] = useState('');
     const [loading, setFormDataLoading] = useState(false);
+    const canPersist = Boolean(formInfo.formId && formInfo.dataId);
     useEffect(() => {
         let cancelled = false;
         /** 查询当前表单的完整字段和值，并在标签页卸载后忽略返回结果。 */
         const loadFormData = async formInfo => {
             const { dataId, formId } = formInfo;
-            if (!formId || !dataId) {
+            if (!formId || !formSdk) {
                 setFormData(null);
                 setFormDataError('未获取到当前表单字段查询参数');
                 console.error('[ecode:${appId}-流程表单助手]:流程表单助手未获取到表单字段查询参数', {
@@ -32,6 +35,10 @@ const FormDataTab = ({formInfo, formSdk, active}) => {
             setFormDataLoading(true);
             setFormDataError('');
             try {
+                if (!canPersist) {
+                    setFormData(readLayoutFormData(formSdk));
+                    return;
+                }
                 console.debug('[ecode:${appId}-流程表单助手]:流程表单助手请求表单字段', { dataId, formId });
                 const responseData = await devRequest({
                     url: '/api/secondev/hnweaver/form-assist/field-value',
@@ -66,7 +73,7 @@ const FormDataTab = ({formInfo, formSdk, active}) => {
 
         loadFormData(formInfo);
         return () => { cancelled = true; };
-    }, [formInfo]);
+    }, [formInfo, formSdk, canPersist, revision]);
 
     const [mainFieldModes, setMainFieldModes] = useState({});
     const [searchKeyword, setSearchKeyword] = useState('');
@@ -98,13 +105,13 @@ const FormDataTab = ({formInfo, formSdk, active}) => {
         console.log('[ecode:${appId}-流程表单助手]:流程表单助手已切换主表字段显示模式', { fieldId, mode });
     };
 
-    if (!active) {
+    if (!active && !viewModel) {
         return null;
     }
-    if (loading) {
+    if (loading && !viewModel) {
         return <div className="ffa-message">表单字段加载中...</div>;
     }
-    if (error) {
+    if (error && !viewModel) {
         return <div className="ffa-error-message">{error}</div>;
     }
     if (!viewModel) {
@@ -112,7 +119,9 @@ const FormDataTab = ({formInfo, formSdk, active}) => {
     }
 
     return (
-        <div className="appid-${appId} seconddev-ecode flow-form-assistant-form-data ffa-form-data">
+        <FormEditContext.Provider value={{formInfo, canPersist, confirmChange, reload: () => setRevision(value => value + 1)}}>
+        <div className="appid-${appId} seconddev-ecode flow-form-assistant-form-data ffa-form-data" hidden={!active}>
+            {!canPersist && <p className="ffa-message">当前展示表单布局中的字段。保存表单后可在助手中编辑。</p>}
             <input
                 aria-label="搜索表单字段"
                 className="appid-${appId} seconddev-ecode flow-form-assistant-field-search ffa-field-search"
@@ -169,6 +178,7 @@ const FormDataTab = ({formInfo, formSdk, active}) => {
                 <div className="ffa-message">暂无匹配字段</div>
             )}
         </div>
+        </FormEditContext.Provider>
     );
 };
 

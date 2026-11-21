@@ -33,6 +33,9 @@ class FormAssistControllerTest {
     @Mock
     private FormFieldValueService formFieldValueService;
 
+    @Mock
+    private com.weaver.seconddev.hnweaver.common.formassist.service.FormEditService formEditService;
+
     @InjectMocks
     private FormAssistController formAssistController;
 
@@ -76,6 +79,26 @@ class FormAssistControllerTest {
 
         assertTrue(result.isStatus());
         verify(formFieldValueService).getFormFieldData(FORM_ID, DATA_ID, "ebuilderform");
+    }
+
+    @Test
+    @DisplayName("保存接口返回平台确认结果")
+    void shouldSaveChange() {
+        com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest request =
+                new com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest();
+        when(formEditService.save(request)).thenReturn(true);
+        assertTrue(formAssistController.edit(request, org.mockito.Mockito.mock(javax.servlet.http.HttpServletResponse.class)).getData());
+    }
+
+    @Test
+    @DisplayName("保存失败返回明确错误而不冒充成功")
+    void shouldReturnSaveFailure() {
+        com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest request =
+                new com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest();
+        when(formEditService.save(request)).thenThrow(new FormAssistException("字段不属于当前表单"));
+        WeaResult<Boolean> result = formAssistController.edit(request, org.mockito.Mockito.mock(javax.servlet.http.HttpServletResponse.class));
+        assertFalse(result.isStatus());
+        assertEquals("字段不属于当前表单", result.getMsg());
     }
 
 }

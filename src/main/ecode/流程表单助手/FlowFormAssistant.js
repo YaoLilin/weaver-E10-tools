@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {Dialog, SlideTabs} from '@weapp/ui';
 import AssistantTrigger from './components/AssistantTrigger';
 import AssistantDialogLayer from './components/AssistantDialogLayer';
+import EditConfirmationDialog from './components/EditConfirmationDialog';
 import FormInfoTab from './components/FormInfoTab';
 import NodeListTab from './components/NodeListTab';
 import FormDataTab from './components/FormDataTab';
@@ -48,6 +49,7 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [activeTab, setActiveTab] = useState('formFields');
     const [formInfo, setFormInfo] = useState({});
+    const [pendingChange, setPendingChange] = useState(null);
     const [formModule, setFormModule] = useState(
         initialFormSdk ? normalizeFormModule(initialFormSdk.getBaseInfo().module)
             : (window.location.pathname.startsWith('/sp/ebdfpage/card/') ? 'ebuilderform' : 'workflow'),
@@ -92,12 +94,32 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
      * 关闭流程表单助手抽屉。
      */
     const closeDrawer = () => {
+        cancelChange();
         setDrawerVisible(false);
         console.log('[ecode:${appId}-流程表单助手]:流程表单助手抽屉已关闭');
     };
 
     /**
-     * 抽屉打开时监听 Esc 键关闭事件。
+     * 打开确认框，保留用户正在编辑的字段、行草稿及勾选状态。
+     * @param {string} title 当前操作的标题
+     * @param {Function} applyChange 用户确认后执行的操作
+     * @param {string} okText 确认按钮文字
+     */
+    const confirmChange = (title, applyChange, okText = '确定') => {
+        setPendingChange(current => current || {title, applyChange, okText});
+    };
+
+    /** 关闭确认框，保留助手中的编辑状态。 */
+    const cancelChange = () => setPendingChange(null);
+
+    /** 确认后关闭提示并执行待提交的操作。 */
+    const applyConfirmedChange = () => {
+        cancelChange();
+        return pendingChange.applyChange();
+    };
+
+    /**
+     * Esc 优先关闭待确认的操作，再关闭助手抽屉。
      */
     useEffect(() => {
         if (!drawerVisible) {
@@ -106,12 +128,16 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
 
         const closeOnEscape = event => {
             if (event.key === 'Escape') {
-                closeDrawer();
+                if (pendingChange) {
+                    cancelChange();
+                } else {
+                    closeDrawer();
+                }
             }
         };
         window.addEventListener('keydown', closeOnEscape);
         return () => window.removeEventListener('keydown', closeOnEscape);
-    }, [drawerVisible]);
+    }, [drawerVisible, pendingChange]);
 
     return (
         <div className={'app-1305269432046043137 appid-${appId} seconddev-ecode'}>
@@ -139,6 +165,7 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
                         <AssistantDialogLayer.Provider value={dialogZIndex}>
                             <FormDataTab
                                 active={activeTab === 'formFields'}
+                                confirmChange={confirmChange}
                                 formInfo={formInfo}
                                 formSdk={formSdkRef.current}
                             />
@@ -150,6 +177,14 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
                     )}
                 </div>
             </Dialog>
+            {pendingChange && (
+                <EditConfirmationDialog
+                    change={pendingChange}
+                    onCancel={cancelChange}
+                    onConfirm={applyConfirmedChange}
+                    zIndex={dialogZIndex + 1}
+                />
+            )}
         </div>
     );
 };

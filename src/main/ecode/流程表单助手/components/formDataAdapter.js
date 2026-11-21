@@ -22,6 +22,50 @@ export function createFormDataViewModel(formData) {
 }
 
 /**
+ * 读取尚未取得数据 ID 的表单，只展示当前布局中的字段和行。
+ *
+ * @param {object} formSdk 当前表单实例
+ * @returns {object} 可供字段视图使用的表单数据
+ */
+export function readLayoutFormData(formSdk) {
+    const mainFields = [];
+    const tables = new Map();
+    const store = formSdk.weFormApi.formStore;
+    const withValue = (field, rowId) => {
+        const value = store.getWidgetData(field.fieldId, rowId);
+        return {...field, value, hasValue: getFieldText(value) !== ''};
+    };
+
+    for (const field of formSdk.listFieldInfo()) {
+        if (!field.fieldId || field.type === 'DetailTable') {
+            continue;
+        }
+        const column = {...field, fieldId: String(field.fieldId)};
+        if (!column.subFormId) {
+            mainFields.push(withValue(column));
+            continue;
+        }
+        const tableId = String(column.subFormId);
+        if (!tables.has(tableId)) {
+            tables.set(tableId, []);
+        }
+        tables.get(tableId).push(column);
+    }
+
+    const detailTables = Array.from(tables, ([subFormId, columns]) => ({
+        subFormId,
+        columns,
+        rows: formSdk.getDetailAllRowIndexStr(`field${subFormId}`).split(',').filter(Boolean)
+            .map((rowId, index) => ({
+                rowId,
+                dataIndex: index + 1,
+                fields: columns.map(field => withValue(field, rowId)),
+            })),
+    }));
+    return {mainFields, detailTables};
+}
+
+/**
  * 转换主表字段或明细列定义。
  *
  * @param {object} formField 后端字段定义
@@ -52,7 +96,7 @@ function createDetailTableViewModel(detailTable, index) {
         const rowFields = (Array.isArray(row.fields) ? row.fields : []).map(createFieldViewModel);
         return {
             index: row.dataIndex,
-            rowId: row.rowId,
+            rowId: String(row.rowId),
             values: new Map(rowFields.map(field => [field.id, field])),
         };
     });
@@ -61,6 +105,7 @@ function createDetailTableViewModel(detailTable, index) {
         id: String(detailTable.subFormId),
         title: `明细${index + 1}`,
         fields,
+        allFields: fields,
         rows,
         totalRows: detailTable.totalRows,
         truncated: detailTable.truncated,
