@@ -218,7 +218,7 @@ function observeFormDialogs(loadModule) {
 
     window.addEventListener('onFormReady', event => {
         const detail = event.detail || {};
-        const supportedModule = detail.module === 'workflow' || detail.module === 'ebuilderform';
+        const supportedModule = ['workflow', 'ebuilderform', 'ebuildercard'].includes(detail.module);
         if (!supportedModule || !detail.formSdk) {
             return;
         }

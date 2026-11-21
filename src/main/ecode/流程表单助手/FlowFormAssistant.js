@@ -19,6 +19,15 @@ const EB_DRAWER_TAB_DATA = [
 ];
 
 /**
+ * 将 EB 卡片的 SDK 模块名转换为助手使用的 EB 表单模块名。
+ * @param {string} module 表单 SDK 返回的模块名
+ * @returns {string} 表单助手接口与标签页使用的模块名
+ */
+function normalizeFormModule(module) {
+    return module === 'ebuildercard' ? 'ebuilderform' : module;
+}
+
+/**
  * 校验抽屉宽度配置。
  *
  * @param {string} width 抽屉宽度，格式为百分比或像素
@@ -40,7 +49,7 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
     const [activeTab, setActiveTab] = useState('formFields');
     const [formInfo, setFormInfo] = useState({});
     const [formModule, setFormModule] = useState(
-        initialFormSdk ? initialFormSdk.getBaseInfo().module
+        initialFormSdk ? normalizeFormModule(initialFormSdk.getBaseInfo().module)
             : (window.location.pathname.startsWith('/sp/ebdfpage/card/') ? 'ebuilderform' : 'workflow'),
     );
     const formSdkRef = useRef(null);
@@ -59,7 +68,8 @@ const FlowFormAssistant = ({initialFormSdk, dialogZIndex = 900}) => {
     const getFormInfo = () => {
         try {
             formSdkRef.current = initialFormSdk || window.WeFormSDK.getWeFormInstance();
-            return formSdkRef.current.getBaseInfo() || {};
+            const baseInfo = formSdkRef.current.getBaseInfo();
+            return baseInfo ? {...baseInfo, module: normalizeFormModule(baseInfo.module)} : {};
         } catch (error) {
             console.error('[ecode:${appId}-流程表单助手]:流程表单助手获取表单信息失败', error);
             return {};
