@@ -1,48 +1,18 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Button, Dialog,Help,Alert } from '@weapp/ui';
+import {getActionParamKeys, mergeTableData, PARAM_TYPE_OPTIONS} from './actionParamData';
 
 const { message } = Dialog;
 
 const ACTION_PARAM_API = '/api/secondev/esb/action/params';
 let localIdSequence = 0;
 
-const PARAM_TYPE_OPTIONS = [
-    { id: 'json', content: 'JSON' },
-    { id: 'xml', content: 'XML' },
-    { id: 'xml_string', content: 'XML文本' },
-    { id: 'string', content: '文本' },
-    { id: 'int', content: '整数' },
-    { id: 'double', content: '浮点数' },
-    { id: 'datetime', content: '日期时间' },
-    { id: 'date', content: '日期' },
-    { id: 'time', content: '时间' },
-    { id: 'boolean', content: '布尔型' },
-    { id: 'binary', content: '字节流' }
-];
-
-const ACTION_TYPE_TO_PARAM_TYPE = {
-    STRING: 'string',
-    BOOLEAN: 'boolean',
-    OBJECT: 'json'
-};
-
-const JAVA_NUMBER_TYPE_TO_PARAM_TYPE = {
-    'java.lang.Integer': 'int',
-    'java.lang.Long': 'int',
-    'int': 'int',
-    'long': 'int',
-    'java.lang.Float': 'double',
-    'java.lang.Double': 'double',
-    'java.math.BigDecimal': 'double',
-    'float': 'double',
-    'double': 'double'
-};
-
-const PARAM_TYPE_OPTION_MAP = PARAM_TYPE_OPTIONS.reduce((result, item) => {
-    result[item.id] = item;
-    return result;
-}, {});
+/** 为新增的参数行分配本页面内唯一的标识。 */
+function createLocalId() {
+    localIdSequence = (localIdSequence + 1) % 100000;
+    return `${Date.now()}${String(localIdSequence).padStart(5, '0')}`;
+}
 
 /**
  * 动作流 Action 参数表格扩展组件, 增加获取参数按钮，可自动获取当前 Action 中的输入或输出参数，补充到 Table 内。
@@ -111,7 +81,7 @@ const ActionParamTable = forwardRef((props, ref) => {
                 throw new Error('获取 Action 参数失败');
             }
 
-            const nextData = mergeTableData(tableData, actionParams);
+            const nextData = mergeTableData(tableData, actionParams, createLocalId);
             setTableData(nextData);
             setHasMissingRequiredParams(false);
             setHasMissingOptionalParams(false);
@@ -242,139 +212,6 @@ async function checkMissingParams(direction, groupId, tableData) {
     return {
         required: params.some((param) => param.required && !existingParamKeys.has(param.key)),
         optional: params.some((param) => !param.required && !existingParamKeys.has(param.key))
-    };
-}
-
-/** 获取必填及非必填参数的完整路径，包含数组和嵌套子参数。 */
-function getActionParamKeys(actionParams, parentKey = '') {
-    return actionParams.flatMap((param) => {
-        const paramKey = `${parentKey}${param.name}${param.array ? '[]' : ''}`;
-        const childParamKeys = Array.isArray(param.children) ? getActionParamKeys(param.children, `${paramKey}.`) : [];
-
-        return [
-            { key: paramKey, required: param.required === true },
-            ...childParamKeys
-        ];
-    });
-}
-
-function mergeTableData(currentData, actionParams) {
-    const data = currentData.slice();
-    actionParams.forEach((param) => mergeActionParam(data, param, '', null));
-    return data;
-}
-
-function mergeActionParam(data, actionParam, parentKey, parentId) {
-    const param = toTableParam(actionParam, parentKey);
-    const hasChildren = Array.isArray(actionParam.children) && actionParam.children.length > 0;
-    const index = findTableParamIndex(data, param, parentId);
-    let tableParam;
-
-    if (index === -1) {
-        tableParam = createTableParam(param, data.length, hasChildren, parentId);
-        data.push(tableParam);
-    } else {
-        tableParam = {
-            ...data[index],
-            ...getTableParamInfo(param, hasChildren, parentId)
-        };
-        if (!tableParam.id) {
-            tableParam.id = createLocalId();
-        }
-        data[index] = tableParam;
-    }
-
-    if (hasChildren) {
-        actionParam.children.forEach((child) => {
-            mergeActionParam(data, child, `${param.paramKey}.`, tableParam.id);
-        });
-    }
-}
-
-function toTableParam(param, parentKey) {
-    const isArray = param.array;
-    const paramType = getTableParamType(param.type, param.javaType);
-    const option = PARAM_TYPE_OPTION_MAP[paramType];
-    const desc = buildParamDescription(param);
-
-    return {
-        paramKey: `${parentKey}${param.name}${isArray ? '[]' : ''}`,
-        paramName: param.name,
-        showName: param.showName || param.name,
-        desc,
-        description: desc,
-        paramType,
-        paramTypeString: option.content,
-        arrs: isArray === true,
-        required: param.required === true
-    };
-}
-
-function buildParamDescription(param) {
-    const desc = param.desc || '';
-    if (param.defaultValue === undefined || param.defaultValue === null || param.defaultValue === '') {
-        return desc;
-    }
-
-    const defaultValueDesc = `默认值：${param.defaultValue}`;
-    return desc ? `${desc} ${defaultValueDesc}` : defaultValueDesc;
-}
-
-function getTableParamType(actionType, javaType) {
-    if (actionType === 'NUMBER') {
-        return JAVA_NUMBER_TYPE_TO_PARAM_TYPE[javaType];
-    }
-    return ACTION_TYPE_TO_PARAM_TYPE[actionType];
-}
-
-function findTableParamIndex(data, param, parentId) {
-    const index = data.findIndex((item) => item && (item.paramKey === param.paramKey
-        || (item.paramName === param.paramName && (item.parentId || null) === parentId)));
-    if (index !== -1) {
-        return index;
-    }
-    return parentId ? -1 : data.findIndex((item) => item && !item.paramName);
-}
-
-function createTableParam(param, displayOrder, hasChildren, parentId) {
-    return {
-        id: createLocalId(),
-        paramKey: param.paramKey,
-        displayOrder,
-        newData: true,
-        newdata: true,
-        ...getTableParamInfo(param, hasChildren, parentId)
-    };
-}
-
-function createLocalId() {
-    localIdSequence = (localIdSequence + 1) % 100000;
-    return `${Date.now()}${String(localIdSequence).padStart(5, '0')}`;
-}
-
-function getTableParamInfo(param, hasChildren, parentId) {
-    const dataType = hasChildren || parentId ? 'node' : 'attribute';
-    return {
-        paramKey: param.paramKey,
-        paramName: param.paramName,
-        showName: param.showName,
-        desc: param.desc,
-        description: param.description,
-        paramType: param.paramType,
-        paramTypeString: param.paramTypeString,
-        arrs: param.arrs,
-        required: param.required,
-        dataType,
-        dataTypeDisabledValue: dataType,
-        canClick: hasChildren,
-        dataTypeDisabled: !hasChildren,
-        arrsDisabledValue: param.arrs,
-        requiredDisabledValue: true,
-        paramNameDisabledValue: param.paramName,
-        showNameDisabledValue: param.showName,
-        paramTypeDisabledValue: param.paramType,
-        isParent: hasChildren,
-        ...(parentId ? { parentId } : {})
     };
 }
 

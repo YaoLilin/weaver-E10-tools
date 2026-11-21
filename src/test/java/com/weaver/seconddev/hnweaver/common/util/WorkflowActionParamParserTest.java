@@ -26,6 +26,35 @@ import static org.junit.jupiter.api.Assertions.*;
 class WorkflowActionParamParserTest {
 
     @Test
+    @DisplayName("递归类型在当前路径止步，相同类型在其他分支仍完整展开")
+    void stopsOnRecursiveFieldsWithoutDroppingSiblingBranches() {
+        List<ActionParamDTO> params = WorkflowActionParamParser.parseParams(RecursiveInput.class);
+        assertEquals(2, params.size());
+        for (ActionParamDTO branch : params) {
+            List<ActionParamDTO> fields = branch.getChildren();
+            assertEquals(4, fields.size());
+            assertEquals("label", fields.get(0).getName());
+            assertNull(fields.get(1).getChildren());
+            assertNull(fields.get(2).getChildren());
+            assertNull(fields.get(3).getChildren());
+            assertTrue(fields.get(2).getArray());
+            assertTrue(fields.get(3).getArray());
+        }
+    }
+
+    private static class RecursiveInput {
+        private RecursiveNode first;
+        private RecursiveNode second;
+    }
+
+    private static class RecursiveNode {
+        private String label;
+        private RecursiveInput parent;
+        private List<RecursiveNode> children;
+        private RecursiveNode[] siblings;
+    }
+
+    @Test
     @DisplayName("AbstractEsbAction子类应当能获取输入和输出参数类型")
     void shouldGetInputAndOutputTypesFromActionSubclass() {
         DemoAction action = new DemoAction();

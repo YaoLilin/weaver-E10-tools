@@ -14,8 +14,10 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author 姚礼林
@@ -79,112 +81,63 @@ public class WorkflowActionParamParser {
      * @return 参数列表
      */
     public static List<ActionParamDTO> parseParams(Class<?> paramType) {
-        List<ActionParamDTO> result = new ArrayList<>();
-        if (paramType == null) {
-            return result;
-        }
-
-        Class<?> current = paramType;
-        while (current != null && current != Object.class) {
-            Field[] fields = current.getDeclaredFields();
-            for (Field field : fields) {
-                if (shouldSkip(field)) {
-                    continue;
-                }
-
-                ActionParamDTO dto = new ActionParamDTO();
-                dto.setName(field.getName());
-
-                ActionParam annotation = field.getAnnotation(ActionParam.class);
-                boolean isAnnotated = annotation != null;
-
-                Class<?> fieldType = field.getType();
-                boolean isSimpleType = isSimpleType(fieldType);
-                boolean isList = List.class.isAssignableFrom(fieldType);
-                boolean isMap = Map.class.isAssignableFrom(fieldType);
-                boolean isNestedObject = !isSimpleType && !isList && !isMap;
-
-                // 简单类型、List、Map、嵌套对象或被注解标记的字段才视为 Action 参数
-                if (isSimpleType || isList || isMap || isNestedObject || isAnnotated) {
-                    // 设置注解属性
-                    if (isAnnotated) {
-                        // 显示名读取 ActionParam 注解中的 displayName 字段
-                        if (StrUtil.isNotBlank(annotation.displayName())) {
-                            dto.setShowName(annotation.displayName());
-                        } else {
-                            dto.setShowName(field.getName());
-                        }
-                        dto.setRequired(annotation.required());
-                        dto.setDefaultValue(annotation.defaultValue());
-                        dto.setDesc(annotation.desc());
-                    } else {
-                        dto.setShowName(field.getName());
-                        dto.setRequired(false);
-                    }
-
-                    // List 和 Java 数组均以元素类型展示，数组属性单独标识
-                    Class<?> valueType = isList ? getListElementType(field) : fieldType;
-                    if (fieldType.isArray()) {
-                        valueType = fieldType.getComponentType();
-                    }
-                    dto.setType(getTypeValue(valueType));
-                    dto.setJavaType(valueType.getName());
-                    dto.setArray(isList || fieldType.isArray());
-
-                    // 处理嵌套对象或 List<T> 中的泛型参数
-                    List<ActionParamDTO> children = parseNestedType(field);
-                    if (children != null && !children.isEmpty()) {
-                        dto.setChildren(children);
-                    }
-
-                    result.add(dto);
-                }
-            }
-            current = current.getSuperclass();
-        }
-        return result;
+        return parseParams(paramType, new HashSet<>());
     }
 
     /**
-     * 解析嵌套类型的字段
-     * 支持：普通对象类型、List<T> 泛型类型
-     *
-     * @param field 字段
-     * @return 子参数列表
+     * 沿当前字段路径追踪类型，阻止递归回到祖先，同时允许同一类型出现在不同字段分支。
      */
-    private static List<ActionParamDTO> parseNestedType(Field field) {
-        Class<?> fieldType = field.getType();
-
-        if (fieldType.isArray()) {
-            Class<?> elementType = fieldType.getComponentType();
-            boolean hasObjectFields = !elementType.isPrimitive() && !isSimpleType(elementType)
-                    && !Map.class.isAssignableFrom(elementType);
-            return hasObjectFields ? parseParams(elementType) : null;
+    private static List<ActionParamDTO> parseParams(Class<?> paramType, Set<Class<?>> path) {
+        List<ActionParamDTO> result = new ArrayList<>();
+        if (paramType == null || !path.add(paramType)) {
+            return result;
         }
-
-        // 如果是 List 类型，获取泛型参数
-        if (List.class.isAssignableFrom(fieldType)) {
-            Type genericType = field.getGenericType();
-            if (genericType instanceof ParameterizedType) {
-                ParameterizedType parameterizedType = (ParameterizedType) genericType;
-                Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
-                if (actualTypeArguments.length > 0 && actualTypeArguments[0] instanceof Class) {
-                    Class<?> elementType = (Class<?>) actualTypeArguments[0];
-                    // 如果泛型参数不是简单类型，则解析其字段
-                    if (!isSimpleType(elementType) && !Map.class.isAssignableFrom(elementType)) {
-                        return parseParams(elementType);
+        try {
+            for (Class<?> current = paramType; current != null && current != Object.class;
+                    current = current.getSuperclass()) {
+                for (Field field : current.getDeclaredFields()) {
+                    if (!shouldSkip(field)) {
+                        result.add(toParameter(field, path));
                     }
                 }
             }
-            return null;
+            return result;
+        } finally {
+            path.remove(paramType);
+        }
+    }
+
+    /**
+     * 构造单个参数的注解、类型及子字段描述。
+     */
+    private static ActionParamDTO toParameter(Field field, Set<Class<?>> path) {
+        ActionParamDTO dto = new ActionParamDTO();
+        dto.setName(field.getName());
+        ActionParam annotation = field.getAnnotation(ActionParam.class);
+        dto.setShowName(annotation != null && StrUtil.isNotBlank(annotation.displayName())
+                ? annotation.displayName() : field.getName());
+        dto.setRequired(annotation != null && annotation.required());
+        if (annotation != null) {
+            dto.setDefaultValue(annotation.defaultValue());
+            dto.setDesc(annotation.desc());
         }
 
-        // 如果是普通对象类型（非简单类型、非 Map、非 List）
-        if (!isSimpleType(fieldType) && !Map.class.isAssignableFrom(fieldType) && !List.class.isAssignableFrom(fieldType)) {
-            return parseParams(fieldType);
+        Class<?> fieldType = field.getType();
+        boolean list = List.class.isAssignableFrom(fieldType);
+        Class<?> valueType = list ? getListElementType(field) : fieldType;
+        if (fieldType.isArray()) {
+            valueType = fieldType.getComponentType();
         }
-
-        return null;
+        dto.setType(getTypeValue(valueType));
+        dto.setJavaType(valueType.getName());
+        dto.setArray(list || fieldType.isArray());
+        if (!valueType.isPrimitive() && !isSimpleType(valueType) && !Map.class.isAssignableFrom(valueType)) {
+            List<ActionParamDTO> children = parseParams(valueType, path);
+            if (!children.isEmpty()) {
+                dto.setChildren(children);
+            }
+        }
+        return dto;
     }
 
     /**
