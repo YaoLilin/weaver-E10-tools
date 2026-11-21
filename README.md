@@ -16,7 +16,7 @@
 | 应用 | 简介 | 详细说明 |
 | --- | --- | --- |
 | 动作流 Action 参数自动获取 | 从 Action 类读取输入、输出参数，补充参数表格，支持循环内 Action、数组和缺失参数提示。 | [使用要求、参数示例及接口](docs/action-params.md) |
-| 流程表单助手 | 查看工作流与 EB 表单的完整字段、已保存字段值、主表和明细信息，支持搜索与只读展示。仅限管理员使用。 | [功能、配置及接口](docs/form-assistant.md) |
+| 流程表单助手 | 查看和编辑工作流与 EB 表单字段，支持字段搜索、明细增删及删除日志。仅限管理员使用。 | [功能、配置及接口](docs/form-assistant.md) |
 | 开发者工具 | 提供独立工具页面，目前支持查询和修改二开日志级别配置。 | [页面地址、日志配置及依赖](docs/developer-tools.md) |
 
 ## 如何部署
@@ -28,7 +28,7 @@
 使用此方式时，你还需要放入我的另一个项目的源码到你的项目中，项目地址：[https://github.com/YaoLilin/weaver-e10-second-dev-common](https://github.com/YaoLilin/weaver-e10-second-dev-common)
 
 **前端 ecode 应用部署**：  
-你可以到 [resources](resources) 目录下载 ecode 应用，导入 ecode 应用到系统中，然后发布。
+从 [resources](resources) 下载对应 E-code 应用 ZIP，导入系统后发布。若修改了应用源码，发布前使用 `ecodecmd build <应用目录> --target e10` 重新生成对应 ZIP。
 
 ## 动作流 Action 参数自动获取
 你可以通过按钮，根据 Action 后端代码中定义的 Action 参数，一键自动获取参数添加到 Action 组件参数配置列表中，

@@ -6,7 +6,7 @@ import {getFieldText} from './formDataAdapter';
 /**
  * 流程字段的只读展示组件。
  *
- * @param {{field: object, formSdk: object, mode: string, onModeChange: Function, rowIndex: number, showLabel: boolean, showModeButton: boolean, editor: object}} props 组件参数
+ * @param {{field: object, formSdk: object, mode: string, onModeChange: Function, rowId: string, showLabel: boolean, showModeButton: boolean, editor: object}} props 组件参数
  * @returns {React.ReactElement} 字段展示组件
  */
 const ReadonlyFieldValue = ({
@@ -14,7 +14,7 @@ const ReadonlyFieldValue = ({
     formSdk,
     mode,
     onModeChange,
-    rowIndex,
+    rowId,
     showLabel = true,
     showModeButton = true,
     editor,
@@ -25,8 +25,8 @@ const ReadonlyFieldValue = ({
         [field, formSdk, isComponentMode],
     );
     const componentData = useMemo(
-        () => (componentDefinition ? getComponentFieldData(formSdk, field, rowIndex, componentDefinition.source) : null),
-        [componentDefinition, field, formSdk, rowIndex],
+        () => (componentDefinition ? getComponentFieldData(formSdk, field, rowId, componentDefinition.source) : null),
+        [componentDefinition, field, formSdk, rowId],
     );
     const componentValue = componentData && componentData.value;
     const hasComponentValue = componentValue !== null && componentValue !== undefined;
@@ -72,7 +72,7 @@ const ReadonlyFieldValue = ({
                     value={componentValue}
                 />
             ) : (
-                <Input inputReadOnly readOnly value={getRawFieldText(formSdk, field, rowIndex)} />
+                <Input inputReadOnly readOnly value={getRawFieldText(formSdk, field, rowId)} />
             )}
         </div>
     );
@@ -117,26 +117,23 @@ export function getComponentDefinition(formSdk, field) {
  *
  * @param {object} formSdk 当前流程表单 SDK
  * @param {object} field 字段展示模型
- * @param {number} rowIndex 明细行号；主表不传
+ * @param {string} rowId 明细行 ID；主表不传
  * @returns {string} 字段原始值文本
  */
-function getRawFieldText(formSdk, field, rowIndex) {
+function getRawFieldText(formSdk, field, rowId) {
     const backendValue = getFieldText(field.value);
     if (backendValue) {
         return backendValue;
     }
     try {
-        const rowId = rowIndex === undefined
-            ? null
-            : formSdk.getDetailRowIdByIndex(field.subFormId, rowIndex);
-        if (rowIndex !== undefined && !rowId) {
+        if (field.subFormId && !rowId) {
             return '';
         }
-        const fieldMark = rowId === null ? field.id : `${field.id}_${rowId}`;
+        const fieldMark = `field${field.id}${rowId ? '_' + rowId : ''}`;
         const sdkValue = formSdk.getFieldValue(fieldMark);
         return sdkValue === undefined || sdkValue === null ? '' : String(sdkValue);
     } catch (error) {
-        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段原始值失败', { error, fieldId: field.id, rowIndex });
+        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段原始值失败', { error, fieldId: field.id, rowId });
         return '';
     }
 }
@@ -146,19 +143,16 @@ function getRawFieldText(formSdk, field, rowIndex) {
  *
  * @param {object} formSdk 当前流程表单 SDK
  * @param {object} field 字段展示模型
- * @param {number} rowIndex 明细行号；主表不传
+ * @param {string} rowId 明细行 ID；主表不传
  * @param {string} source 组件配置来源
  * @returns {{rowId: string|undefined, value: object}|null} 组件上下文与字段值
  */
-export function getComponentFieldData(formSdk, field, rowIndex, source) {
+export function getComponentFieldData(formSdk, field, rowId, source) {
     if (source === 'backend') {
-        return getBackendComponentFieldData(field);
+        return getBackendComponentFieldData(field, rowId);
     }
     try {
-        const rowId = rowIndex === undefined
-            ? undefined
-            : formSdk.getDetailRowIdByIndex(field.subFormId, rowIndex);
-        if (rowIndex !== undefined && !rowId) {
+        if (field.subFormId && !rowId) {
             return null;
         }
         return {
@@ -166,7 +160,7 @@ export function getComponentFieldData(formSdk, field, rowIndex, source) {
             value: formSdk.weFormApi.formStore.getWidgetData(field.id, rowId),
         };
     } catch (error) {
-        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段组件值失败', { error, fieldId: field.id, rowIndex });
+        console.error('[ecode:${appId}-流程表单助手]:流程表单助手读取字段组件值失败', { error, fieldId: field.id, rowId });
         return null;
     }
 }
@@ -175,9 +169,10 @@ export function getComponentFieldData(formSdk, field, rowIndex, source) {
  * 将后端字段值转换为只读字段组件可使用的数据对象。
  *
  * @param {object} field 后端返回的字段展示模型
- * @returns {{rowId: undefined, value: object}} 组件上下文与字段值
+ * @param {string} rowId 当前明细行 ID，主表不传
+ * @returns {{rowId: string|undefined, value: object}} 组件上下文与字段值
  */
-function getBackendComponentFieldData(field) {
+function getBackendComponentFieldData(field, rowId) {
     const backendValue = field.value || {};
     const content = getFieldText(backendValue);
     const hasBackendOptions = Array.isArray(backendValue.dataOptions);
@@ -189,7 +184,7 @@ function getBackendComponentFieldData(field) {
         : [];
     const dataOptions = hasBackendOptions ? backendValue.dataOptions : fallbackOptions;
     return {
-        rowId: undefined,
+        rowId,
         value: { ...backendValue, content, dataOptions },
     };
 }

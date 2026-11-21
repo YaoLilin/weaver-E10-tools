@@ -6,7 +6,7 @@ import {saveFormChange, syncFieldValue, toFieldChange} from './formEditApi';
 
 /**
  * 展示可单独编辑和确认保存的主表字段或明细单元格。
- * @param {{field: object, formSdk: object, mode: string, onModeChange: Function, rowIndex: number, showLabel: boolean, showModeButton: boolean, row: object}} props 字段展示参数与明细行编辑上下文
+ * @param {{field: object, formSdk: object, mode: string, onModeChange: Function, showLabel: boolean, showModeButton: boolean, row: object}} props 字段展示参数与明细行编辑上下文
  * @returns {React.ReactElement} 字段及编辑操作
  */
 const FormFieldValue = props => {
@@ -19,14 +19,17 @@ const FormFieldValue = props => {
     const isNewRow = Boolean(row && row.isNew);
     const editable = editing || isNewRow;
     const definition = editable ? getComponentDefinition(formSdk, field) : null;
-    /** 读取当前布局值；明细始终使用稳定行 ID，不依赖显示序号。 */
+    const rowId = row && row.rowId;
+
+    /** 明细显示、编辑和 SDK 回写统一使用行 ID；新增行优先取助手草稿。 */
     const readValue = componentDefinition => {
-        const sourceData = componentDefinition && row && componentDefinition.source === 'sdk'
-            ? {value: formSdk.weFormApi.formStore.getWidgetData(field.id, row.rowId)}
-            : (componentDefinition ? getComponentFieldData(formSdk, field, props.rowIndex, componentDefinition.source) : null);
+        if (isNewRow && row.draftValue !== undefined) {
+            return row.draftValue;
+        }
+        const sourceData = componentDefinition && getComponentFieldData(formSdk, field, rowId, componentDefinition.source);
         return (sourceData && sourceData.value) || field.value || {content: '', dataOptions: []};
     };
-    const value = draft || readValue(definition);
+    const value = draft || (editable ? readValue(definition) : undefined);
 
     /** 进入字段编辑状态，已有草稿时打开保存确认框。 */
     const handleEdit = () => {
@@ -116,7 +119,7 @@ const FormFieldValue = props => {
             isNewDataFormat
             onBlur={() => {}}
             onChange={changeDraft}
-            rowId={row ? row.rowId : undefined}
+            rowId={rowId}
             value={value}
             widgetEditable
             widgetReadOnly={false}
@@ -124,7 +127,16 @@ const FormFieldValue = props => {
     ) : null;
     return (
         <div className={row ? 'ffa-editable-cell' + (editable ? ' is-editing' : '') : 'ffa-editable-field'}>
-            <ReadonlyFieldValue {...props} editor={{action, cancel: cancelAction, content}} />
+            <ReadonlyFieldValue
+                editor={{action, cancel: cancelAction, content}}
+                field={field}
+                formSdk={formSdk}
+                mode={props.mode}
+                onModeChange={props.onModeChange}
+                rowId={rowId}
+                showLabel={props.showLabel}
+                showModeButton={props.showModeButton}
+            />
             {row && !isNewRow && action && <span className="ffa-cell-edit-action">{action}{cancelAction}</span>}
             {editable && !definition && <div className="ffa-error-message">无法编辑：未取得字段组件配置</div>}
             {error && <div className="ffa-error-message" role="alert">{error}</div>}

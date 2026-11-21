@@ -4,17 +4,13 @@ import com.weaver.common.form.api.rest.FormRestFactory;
 import com.weaver.common.form.api.rest.data.FormDataRest;
 import com.weaver.common.form.data.FormData;
 import com.weaver.common.form.data.detail.FormDataDetail;
-import com.weaver.common.form.data.log.FormDataLogService;
-import com.weaver.common.form.data.log.OperationType;
-import com.weaver.common.form.data.log.SimpleFormDataLog;
 import com.weaver.common.form.dto.data.FormDataDelDto;
-import com.weaver.common.form.dto.data.FormDataDetailDto;
 import com.weaver.common.form.dto.data.FormDataDto;
-import com.weaver.common.form.dto.data.FormDataOptionDto;
 import com.weaver.common.form.metadata.field.FormField;
 import com.weaver.framework.rpc.annotation.RpcReference;
 import com.weaver.seconddev.hnweaver.common.exception.FormAssistException;
 import com.weaver.seconddev.hnweaver.common.formassist.domain.FormAssistModule;
+import com.weaver.seconddev.hnweaver.common.formassist.domain.FormDeletionProgressException;
 import com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest;
 import com.weaver.seconddev.hnweaver.common.util.FieldRpcUtil;
 import com.weaver.teams.domain.user.SimpleEmployee;
@@ -24,17 +20,11 @@ import com.weaver.workflow.core.api.rest.publicapi.WfcFormDataRest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -48,7 +38,7 @@ import java.util.stream.Collectors;
 public class FormEditService {
     private final FormRestFactory formRestFactory;
     private final FieldRpcUtil fieldRpcUtil;
-    private final ObjectProvider<FormDataLogService> formDataLogs;
+    private final FormDeletionAudit deletionAudit;
 
     @RpcReference
     private WfcFormDataRest wfcFormDataRest;
@@ -63,26 +53,68 @@ public class FormEditService {
         SimpleEmployee operator = requireAdmin();
         FormAssistModule module = FormAssistModule.fromValue(request.getModule());
         FormDataRest rest = requireFormDataRest(module);
-        FormData existing = loadData(module, rest, request.getDataId(), operator);
-        validateRecordOwnership(request, existing);
+        if (request.getOperation() == FormEditRequest.Operation.DELETE_ROWS) {
+            FormEditChanges.validateDeletionRequest(request);
+            return deletionAudit.withRecordLock(request, operator, () -> deleteRows(request, module, rest, operator));
+        }
+        FormData existing = loadOwnedData(request, module, rest, operator);
         Map<Long, FormField> metadata = requireFieldMetadata(request, module, operator);
-        List<FormDataDetail> details = Optional.ofNullable(existing.getDataDetails()).orElse(Collections.emptyList());
-
-        boolean deleting = request.getOperation() == FormEditRequest.Operation.DELETE_ROWS;
-        FormDataDto change = prepareChange(request, existing, metadata, details);
-        change.setObjectId(rest.getObjectIdByFormData(request.getDataId(), operator));
-
-        FormDataLogService logService = deleting ? requireFormDataLogService() : null;
-        List<FormDataDetail> deletedValues =
-                deleting ? snapshotDeletedValues(request, details, metadata) : Collections.emptyList();
-
+        FormDataDto change = createChange(request, existing, rest.getObjectIdByFormData(request.getDataId(), operator));
+        change.setDataDetails(FormEditChanges.buildFields(request, metadata, detailsOf(existing)));
         persistChange(request, rest, change, operator);
-        if (deleting) {
-            FormData refreshed = loadData(module, rest, request.getDataId(), operator);
-            verifyDeletedRows(request, refreshed, details, metadata);
-            writeDeletionLog(logService, existing, change, deletedValues, operator);
+        return true;
+    }
+
+    /**
+     * 保留删除前快照，确认所选行已删除后写入日志；同请求可补记已落库的删除。
+     */
+    private boolean deleteRows(
+            FormEditRequest request, FormAssistModule module, FormDataRest rest, SimpleEmployee operator) {
+        FormData existing = loadOwnedData(request, module, rest, operator);
+        if (existing.getDataDetails() == null) {
+            throw new FormAssistException("平台未返回明细行数据，请刷新原表单后重试");
+        }
+        Map<Long, FormField> metadata = requireFieldMetadata(request, module, operator);
+        List<FormDataDetail> details = existing.getDataDetails();
+        FormDeletionSnapshot pending = deletionAudit.find(request, operator);
+        if (pending != null && !removedRows(pending, existing).isEmpty()) {
+            return finishDeletion(request, pending, existing, metadata, operator);
+        }
+
+        FormDataDto change = createChange(request, existing, rest.getObjectIdByFormData(request.getDataId(), operator));
+        change.setDelRowIds(FormEditChanges.buildDeletions(request, metadata, details));
+        // 键为当前明细表 ID，false 表示按行增量保存。
+        change.setCoverMap(Collections.singletonMap(request.getSubFormId(), false));
+        pending = deletionAudit.prepare(request, existing, change, details, metadata, operator);
+        persistChange(request, rest, change, operator);
+        FormData verified = readBackDeletion(request, module, rest, operator);
+        return finishDeletion(request, pending, verified, metadata, operator);
+    }
+
+    /**
+     * 补记已确认从表单移除的选中行；部分成功时明确提示剩余行需要重新选择。
+     */
+    private boolean finishDeletion(
+            FormEditRequest request, FormDeletionSnapshot pending, FormData verified,
+            Map<Long, FormField> metadata, SimpleEmployee operator) {
+        Set<Long> removed = removedRows(pending, verified);
+        if (removed.isEmpty()) {
+            throw new FormAssistException("删除明细失败：平台保存后仍存在待删除行");
+        }
+        if (removed.size() != pending.getRows().size()) {
+            deletionAudit.retainRemovedRows(request, operator, pending, removed);
+        }
+        deletionAudit.complete(request, pending, verified, metadata, operator);
+        if (pending.isPartial()) {
+            throw new FormDeletionProgressException("仅部分选中明细已删除并记录日志，请刷新表单后重新选择剩余行");
         }
         return true;
+    }
+
+    private Set<Long> removedRows(FormDeletionSnapshot pending, FormData data) {
+        Set<Long> present = data.getDataDetails().stream().map(FormDataDetail::getRowId).collect(Collectors.toSet());
+        return pending.getRows().stream().map(FormDataDelDto::getRowId)
+                .filter(rowId -> !present.contains(rowId)).collect(Collectors.toSet());
     }
 
     /**
@@ -108,16 +140,22 @@ public class FormEditService {
     }
 
     /**
-     * 确认请求中的数据记录属于指定表单。
+     * 按模块读取记录并确认它属于请求指定的表单。
      */
-    private void validateRecordOwnership(FormEditRequest request, FormData existing) {
-        boolean matchesForm =
-                existing != null
-                        && existing.getForm() != null
-                        && request.getFormId().equals(existing.getForm().getId());
-        if (!matchesForm) {
+    private FormData loadOwnedData(
+            FormEditRequest request, FormAssistModule module, FormDataRest rest, SimpleEmployee operator) {
+        Long dataId = request.getDataId();
+        FormData existing = module == FormAssistModule.WORKFLOW
+                ? wfcFormDataRest.getFullFormData(dataId, operator) : rest.getFullFormData(dataId, operator);
+        if (existing == null || existing.getForm() == null
+                || !request.getFormId().equals(existing.getForm().getId())) {
             throw new FormAssistException("表单记录不存在或不属于指定表单");
         }
+        return existing;
+    }
+
+    private List<FormDataDetail> detailsOf(FormData existing) {
+        return Optional.ofNullable(existing.getDataDetails()).orElse(Collections.emptyList());
     }
 
     /**
@@ -131,33 +169,6 @@ public class FormEditService {
             throw new FormAssistException("未查询到当前表单字段");
         }
         return metadata;
-    }
-
-    /**
-     * 按操作类型构造字段值或明细删除标识。
-     */
-    private FormDataDto prepareChange(
-            FormEditRequest request, FormData existing, Map<Long, FormField> metadata, List<FormDataDetail> details) {
-        FormDataDto change = createChange(request, existing);
-        if (request.getOperation() == FormEditRequest.Operation.DELETE_ROWS) {
-            change.setDelRowIds(buildDeletions(request, metadata, details));
-            // key 为当前明细表 ID，false 表示增量处理，禁止整表覆盖。
-            change.setCoverMap(Collections.singletonMap(request.getSubFormId(), false));
-        } else {
-            change.setDataDetails(buildFields(request, metadata, details));
-        }
-        return change;
-    }
-
-    /**
-     * 明细删除前确认原生日志服务可用。
-     */
-    private FormDataLogService requireFormDataLogService() {
-        FormDataLogService logService = formDataLogs.getIfAvailable();
-        if (logService == null) {
-            throw new FormAssistException("当前环境未启用 E10 表单日志服务，无法删除明细");
-        }
-        return logService;
     }
 
     /**
@@ -178,113 +189,27 @@ public class FormEditService {
     }
 
     /**
-     * 用平台回读结果确认选中行已删除且未选中行仍存在。
+     * 只校验本次选中行的回读结果；其他操作可以同时改变未选中行。
      */
-    private void verifyDeletedRows(
-            FormEditRequest request,
-            FormData refreshed,
-            List<FormDataDetail> originalDetails,
-            Map<Long, FormField> metadata) {
-        if (refreshed == null || refreshed.getDataDetails() == null) {
-            throw new FormAssistException("删除明细失败：无法确认平台保存结果");
-        }
-        Set<Long> remaining =
-                refreshed.getDataDetails().stream()
-                        .map(FormDataDetail::getRowId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-        Set<Long> retained = rowsOf(request.getSubFormId(), originalDetails, metadata);
-        retained.removeAll(request.getRowIds());
-        if (!remaining.containsAll(retained)) {
-            throw new FormAssistException("删除范围异常：未选中明细行缺失，请停止操作并联系管理员");
-        }
-        if (request.getRowIds().stream().anyMatch(remaining::contains)) {
-            throw new FormAssistException("删除明细失败：平台保存后仍存在待删除行");
-        }
-    }
-
-    /**
-     * 留存选中行的原字段值，供 E10 日志比较删除前后的数据。
-     */
-    private List<FormDataDetail> snapshotDeletedValues(
-            FormEditRequest request, List<FormDataDetail> details, Map<Long, FormField> metadata) {
-        Set<Long> selected = new HashSet<>(request.getRowIds());
-        return details.stream()
-                .filter(detail ->
-                        selected.contains(detail.getRowId())
-                                && resolveSubForm(detail, metadata).filter(request.getSubFormId()::equals).isPresent())
-                .map(detail -> copyLogDetail(detail, metadata))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 补全平台日志序列化所需的字段和明细表元数据。
-     */
-    private FormDataDetail copyLogDetail(FormDataDetail detail, Map<Long, FormField> metadata) {
-        FormDataDetail copy = detail.clone();
-        FormField field = resolveField(detail, metadata);
-        if (field == null) {
-            throw new FormAssistException("无法获取待删除明细的字段信息，不能生成表单日志");
-        }
-        copy.setFormField(field);
-        if (copy.getSubForm() == null) {
-            copy.setSubForm(field.getSubForm());
-        }
-        return copy;
-    }
-
-    /**
-     * 将已确认的删除和旧字段值交给 E10 原生表单日志服务。
-     */
-    private void writeDeletionLog(
-            FormDataLogService logService,
-            FormData existing,
-            FormDataDto change,
-            List<FormDataDetail> deletedValues,
-            SimpleEmployee operator) {
-        FormData event = new FormData(change.getDataId());
-        event.setForm(existing.getForm());
-        event.setFormLayout(existing.getFormLayout());
-        event.setModule(existing.getModule());
-        event.setClient(existing.getClient());
-        event.setRefId(existing.getRefId());
-        event.setExternalId(existing.getExternalId());
-        event.setObjectId(change.getObjectId());
-        event.setDataDetails(Collections.emptyList());
-        event.setDataDelRows(change.getDelRowIds());
-        SimpleFormDataLog source = existing.getSimpleFormDataLog();
+    private FormData readBackDeletion(
+            FormEditRequest request, FormAssistModule module, FormDataRest rest, SimpleEmployee operator) {
+        FormData verified;
         try {
-            // key 为表单数据 ID，value 为本次删除行的原字段值。
-            logService.sendFormDataLogMessage(
-                    OperationType.SAVE,
-                    Collections.singletonList(event),
-                    Collections.singletonMap(change.getDataId(), deletedValues),
-                    source == null ? null : source.getSources(),
-                    source == null ? null : source.getSourceId(),
-                    operator);
+            verified = loadOwnedData(request, module, rest, operator);
         } catch (Exception exception) {
-            log.error(
-                    "明细已删除，发送表单日志失败，dataId={}，subFormId={}",
-                    change.getDataId(),
-                    change.getDelRowIds().get(0).getSubFormId(),
-                    exception);
-            throw new FormAssistException("明细已删除，但表单日志发送失败，请刷新后核对");
+            log.warn("明细删除后的回读失败，dataId={}", request.getDataId(), exception);
+            throw new FormDeletionProgressException("平台已返回保存结果，但删除回读失败，请重试相同的删除操作");
         }
-    }
-
-    /**
-     * 使用与字段查询相同的数据服务，避免删除确认和页面读取不同的数据版本。
-     */
-    private FormData loadData(FormAssistModule module, FormDataRest rest, Long dataId, SimpleEmployee operator) {
-        return module == FormAssistModule.WORKFLOW
-                ? wfcFormDataRest.getFullFormData(dataId, operator)
-                : rest.getFullFormData(dataId, operator);
+        if (verified.getDataDetails() == null) {
+            throw new FormDeletionProgressException("平台未返回明细行数据，请重试相同的删除操作核对结果");
+        }
+        return verified;
     }
 
     /**
      * 创建限定当前记录的增量保存对象。
      */
-    private FormDataDto createChange(FormEditRequest request, FormData existing) {
+    private FormDataDto createChange(FormEditRequest request, FormData existing, Long objectId) {
         FormDataDto change = new FormDataDto();
         change.setFormId(request.getFormId());
         change.setDataId(request.getDataId());
@@ -292,157 +217,7 @@ public class FormEditService {
         change.setNewLayout(existing.isNewLayout());
         change.setLayoutMultiId(existing.getMultipleLayoutId());
         change.setDataDetails(Collections.emptyList());
+        change.setObjectId(objectId);
         return change;
-    }
-
-    /**
-     * 校验字段和行的归属，只构造本次需要保存的字段。
-     */
-    private List<FormDataDetailDto> buildFields(
-            FormEditRequest request, Map<Long, FormField> metadata, List<FormDataDetail> details) {
-        if (request.getFields().isEmpty() || !request.getRowIds().isEmpty()) {
-            throw new FormAssistException("字段保存请求必须包含字段且不能混入删除行");
-        }
-        Set<String> unique = new HashSet<>();
-        // key 为新增行 ID，value 为服务端分配的明细索引，避免信任客户端行号。
-        Map<Long, Long> newRowIndexes = new HashMap<>(16);
-        Set<Long> existingRows = rowsOf(request.getSubFormId(), details, metadata);
-        long nextIndex =
-                details.stream()
-                        .filter(item -> existingRows.contains(item.getRowId()))
-                        .map(FormDataDetail::getDataIndex)
-                        .filter(Objects::nonNull)
-                        .max(Long::compareTo)
-                        .orElse(0L);
-        List<FormDataDetailDto> changes = new ArrayList<>(request.getFields().size());
-        for (FormEditRequest.FieldChange item : request.getFields()) {
-            FormField field = metadata.get(item.getFieldId());
-            if (field == null || !request.getFormId().equals(field.getFormId())) {
-                throw new FormAssistException("字段不属于当前表单");
-            }
-            Long subFormId = field.getSubForm() == null ? null : field.getSubForm().getId();
-            validateRow(request, item, subFormId, existingRows);
-            if (!unique.add(item.getFieldId() + ":" + item.getRowId())) {
-                throw new FormAssistException("同一字段和明细行不能重复提交");
-            }
-            FormDataDetailDto value = new FormDataDetailDto();
-            value.setFieldId(item.getFieldId());
-            value.setSubFormId(subFormId);
-            value.setRowId(item.getRowId());
-            if (request.getOperation() == FormEditRequest.Operation.ADD_ROWS) {
-                if (!newRowIndexes.containsKey(item.getRowId())) {
-                    newRowIndexes.put(item.getRowId(), ++nextIndex);
-                }
-                value.setDataIndex(newRowIndexes.get(item.getRowId()));
-            }
-            value.setContent(item.getContent());
-            value.setDataOptions(item.getDataOptions().stream().map(this::toOption).collect(Collectors.toList()));
-            changes.add(value);
-        }
-        return changes;
-    }
-
-    /**
-     * 校验明细行存在性，防止使用其他表单或明细表的行 ID。
-     */
-    private void validateRow(
-            FormEditRequest request, FormEditRequest.FieldChange field, Long subFormId, Set<Long> existingRows) {
-        if (subFormId == null) {
-            if (field.getRowId() != null
-                    || request.getSubFormId() != null
-                    || request.getOperation() != FormEditRequest.Operation.UPDATE) {
-                throw new FormAssistException("主表字段只能按字段修改");
-            }
-            return;
-        }
-        if (field.getRowId() == null || !subFormId.equals(request.getSubFormId())) {
-            throw new FormAssistException("明细字段必须提供所属明细表及行 ID");
-        }
-        boolean adding = request.getOperation() == FormEditRequest.Operation.ADD_ROWS;
-        if (adding == existingRows.contains(field.getRowId())) {
-            throw new FormAssistException(adding ? "新增明细行 ID 已存在" : "明细行不存在或不属于当前明细表");
-        }
-        if (adding && field.getDataIndex() == null) {
-            throw new FormAssistException("新增明细必须提供行索引");
-        }
-    }
-
-    /**
-     * 校验选中行均属于当前明细表，并生成平台删除标识。
-     */
-    private List<FormDataDelDto> buildDeletions(
-            FormEditRequest request, Map<Long, FormField> metadata, List<FormDataDetail> details) {
-        boolean hasSubForm =
-                request.getSubFormId() != null
-                        && metadata.values().stream()
-                        .anyMatch(field ->
-                                field.getSubForm() != null
-                                        && request.getSubFormId().equals(field.getSubForm().getId()));
-        if (!hasSubForm || request.getRowIds().isEmpty() || !request.getFields().isEmpty()) {
-            throw new FormAssistException("删除请求必须提供当前明细表和待删除行，不能混入字段修改");
-        }
-        Set<Long> existingRows = rowsOf(request.getSubFormId(), details, metadata);
-        List<FormDataDelDto> deletions = new ArrayList<>(request.getRowIds().size());
-        for (Long rowId : new LinkedHashSet<>(request.getRowIds())) {
-            if (!existingRows.contains(rowId)) {
-                throw new FormAssistException("待删除行不存在或不属于当前明细表");
-            }
-            FormDataDelDto deletion = new FormDataDelDto();
-            deletion.setDataId(request.getDataId());
-            deletion.setFormId(request.getFormId());
-            deletion.setSubFormId(request.getSubFormId());
-            deletion.setRowId(rowId);
-            deletions.add(deletion);
-        }
-        return deletions;
-    }
-
-    /**
-     * 从当前记录中提取指定明细表的行 ID。
-     */
-    private Set<Long> rowsOf(Long subFormId, List<FormDataDetail> details, Map<Long, FormField> metadata) {
-        if (subFormId == null) {
-            return Collections.emptySet();
-        }
-        return details.stream()
-                .filter(item ->
-                        item.getRowId() != null && resolveSubForm(item, metadata).filter(subFormId::equals).isPresent())
-                .map(FormDataDetail::getRowId)
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * 数据值未携带明细表对象时，通过字段元数据确认明细归属。
-     */
-    private Optional<Long> resolveSubForm(FormDataDetail detail, Map<Long, FormField> metadata) {
-        if (detail.getSubForm() != null) {
-            return Optional.ofNullable(detail.getSubForm().getId());
-        }
-        FormField field = resolveField(detail, metadata);
-        return field == null || field.getSubForm() == null
-                ? Optional.empty()
-                : Optional.ofNullable(field.getSubForm().getId());
-    }
-
-    /**
-     * 解析数据值对应的表单字段元数据。
-     */
-    private FormField resolveField(FormDataDetail detail, Map<Long, FormField> metadata) {
-        Long fieldId = detail.getFormField() == null ? null : detail.getFormField().getId();
-        if (fieldId == null && detail.getFieldIds() != null && !detail.getFieldIds().isEmpty()) {
-            fieldId = detail.getFieldIds().get(0);
-        }
-        return metadata.get(fieldId);
-    }
-
-    /**
-     * 只映射选项标识、显示内容和类型，不接受任意文件对象。
-     */
-    private FormDataOptionDto toOption(FormEditRequest.OptionValue option) {
-        FormDataOptionDto mapped = new FormDataOptionDto();
-        mapped.setOptionId(option.getOptionId());
-        mapped.setContent(option.getContent());
-        mapped.setType(option.getType());
-        return mapped;
     }
 }

@@ -1,7 +1,7 @@
 import React, {useContext, useRef, useState} from 'react';
 import {Icon, Pagination, Table} from '@weapp/ui';
 import FormEditContext from './FormEditContext';
-import {saveFormChange, syncFieldValue, toFieldChange} from './formEditApi';
+import {DELETION_PROGRESS_CODE, saveFormChange, syncFieldValue, toFieldChange} from './formEditApi';
 import FieldInfoButton from './FieldInfoButton';
 import FormFieldValue from './FormFieldValue';
 
@@ -160,7 +160,8 @@ const DetailTable = ({ formSdk, table }) => {
                 }
             } catch (exception) {
                 console.error('[ecode:${appId}-流程表单助手]:删除明细行失败', exception);
-                setError(`删除明细行失败：${exception.message}`);
+                setError(exception.code === DELETION_PROGRESS_CODE
+                    ? exception.message : `删除明细行失败：${exception.message}`);
             } finally { setBusy(false); }
         }, '删除');
     };
@@ -211,10 +212,13 @@ const DetailTable = ({ formSdk, table }) => {
                     formSdk={formSdk}
                     mode={fieldModes[field.id] || 'component'}
                     onModeChange={changeFieldMode}
-                    rowIndex={row.displayIndex}
-                    row={{...row, onDraftChange: (editedField, value) => {
-                        pendingValues.current.get(row.rowId).set(editedField.id, value);
-                    }}}
+                    row={{
+                        ...row,
+                        draftValue: row.isNew ? pendingValues.current.get(row.rowId).get(field.id) : undefined,
+                        onDraftChange: (editedField, value) => {
+                            pendingValues.current.get(row.rowId).set(editedField.id, value);
+                        },
+                    }}
                     showLabel={false}
                     showModeButton={false}
                 />

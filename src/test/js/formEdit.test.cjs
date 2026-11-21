@@ -14,6 +14,7 @@ function harness() {
     let frame;
     const requests = [], syncs = [], confirmations = [], pendingChanges = [], deletions = [], messages = [];
     let fail = false;
+    let saveResponse = {status: true, data: true};
     const context = {
         formInfo: {formId: '100', dataId: '200', module: 'workflow'},
         confirmChange: (title, applyChange, okText = '确定') => pendingChanges.push({title, applyChange, okText}),
@@ -45,7 +46,7 @@ function harness() {
         const sandbox = {exports, console: {error() {}, log() {}, debug() {}}, window: {setTimeout, WeFormSDK: {showMessage: (...args) => messages.push(args), showConfirm: (...args) => confirmations.push(args)}}, require(name) {
             if (name === 'react') { return React; }
             if (name === '@weapp/ui') { return ui; }
-            if (name === '@weapp/ecodesdk') { return {devRequest: async config => { requests.push(config); if (fail) { throw new Error('保存被拒绝'); } return {status: true, data: true}; }}; }
+            if (name === '@weapp/ecodesdk') { return {devRequest: async config => { requests.push(config); if (fail) { throw new Error('保存被拒绝'); } return saveResponse; }}; }
             return load(path.resolve(path.dirname(file), name + '.js'));
         }};
         vm.createContext(sandbox);
@@ -66,7 +67,7 @@ function harness() {
         const owner = {state: [], cursor: 0};
         return {render() { frame = owner; owner.cursor = 0; return fn(props); }};
     }
-    return {component, context, readLayoutFormData: load(path.join(root, "formDataAdapter.js")).readLayoutFormData, field, sdk, requests, syncs, confirmations, pendingChanges, deletions, messages, setFail(value) { fail = value; }};
+    return {component, context, readLayoutFormData: load(path.join(root, "formDataAdapter.js")).readLayoutFormData, field, sdk, requests, syncs, confirmations, pendingChanges, deletions, messages, setFail(value) { fail = value; }, setSaveResponse(response) { saveResponse = response; }};
 }
 
 function find(node, predicate) {
@@ -126,8 +127,24 @@ test('保存失败保持字段编辑状态且不写入原表单', async () => {
     assert.equal(h.requests[0].data.fields[0].content, '');
 });
 
-test('明细编辑使用稳定行 ID，布局行号变化也不会保存到其他行', async () => {
-    const h = harness(), component = h.component('FormFieldValue', {field: {...h.field, subFormId: '400'}, formSdk: h.sdk, mode: 'component', row: {rowId: '500', index: 7}, rowIndex: 2, showLabel: false, showModeButton: false});
+test('明细展示、文本回退和保存都定位同一个稳定行 ID', async () => {
+    const h = harness();
+    h.sdk.getDetailRowIdByIndex = () => '错误布局行';
+    h.sdk.weFormApi.formStore.getWidgetData = (_, rowId) => ({content: rowId});
+    h.sdk.getFieldValue = mark => mark;
+    const field = {...h.field, subFormId: '400', value: {}};
+    const table = {id: '400', fields: [field], rows: [{rowId: '500', index: 7, values: new Map()}]};
+    const detail = h.component('DetailTable', {formSdk: h.sdk, table});
+    const view = find(detail.render(), node => node.type === 'Table');
+    const props = view.props.columns[1].bodyRender(view.props.data[0]).props;
+    const component = h.component('FormFieldValue', props);
+    const readonlyProps = component.render().children[0].props;
+    const readonly = h.component('ReadonlyFieldValue', readonlyProps);
+    const displayed = find(readonly.render(), node => node.type === 'CorsComponent');
+    assert.equal(displayed.props.rowId, '500');
+    assert.equal(displayed.props.value.content, '500');
+    const text = h.component('ReadonlyFieldValue', {...readonlyProps, mode: 'input'});
+    assert.equal(find(text.render(), node => node.type === 'Input').props.value, 'field300_500');
     await editor(component.render()).action.props.onClick();
     editor(component.render()).content.props.onChange({content: '明细新值', dataOptions: []});
     await editor(component.render()).action.props.onClick();
@@ -139,7 +156,8 @@ test('明细编辑使用稳定行 ID，布局行号变化也不会保存到其�
 
 test('新增明细先创建 SDK 草稿行，确认后才提交，空选择时删除按钮不可用', async () => {
     const h = harness();
-    const component = h.component('DetailTable', {formSdk: h.sdk, table: {id: '400', title: '明细1', fields: [{...h.field, subFormId: '400'}], rows: []}});
+    const componentTable = {id: '400', title: '明细1', fields: [{...h.field, subFormId: '400'}], rows: []};
+    const component = h.component('DetailTable', {formSdk: h.sdk, table: componentTable});
     assert.equal(button(component.render(), '删除选中明细行').props.disabled, true);
     await button(component.render(), '添加明细行').props.onClick();
     const tree = component.render();
@@ -149,6 +167,11 @@ test('新增明细先创建 SDK 草稿行，确认后才提交，空选择时删
     assert.equal(row.rowId, '501');
     assert.equal(row.isNew, true);
     table.props.columns[1].bodyRender(row).props.row.onDraftChange(h.field, {content: '新增值', dataOptions: []});
+    const reopenedTable = h.component('DetailTable', {formSdk: h.sdk, table: componentTable});
+    const reopenedView = find(reopenedTable.render(), node => node.type === 'Table');
+    const reopenedCell = reopenedView.props.columns[1].bodyRender(reopenedView.props.data[0]);
+    const reopenedField = h.component('FormFieldValue', reopenedCell.props);
+    assert.equal(editor(reopenedField.render()).content.props.value.content, '新增值');
     await button(component.render(), '保存新增明细行').props.onClick();
     assert.equal(h.requests.length, 0);
     h.pendingChanges.shift();
@@ -186,6 +209,21 @@ test('明细删除保存失败时不删除布局内数据', async () => {
     button(component.render(), '删除选中明细行').props.onClick();
     h.setFail(true);
     await acceptChange(h);
+    assert.equal(h.deletions.length, 0);
+});
+
+test('日志尚未确认时直接显示删除进度并保留选区以便补记', async () => {
+    const h = harness();
+    const component = h.component('DetailTable', {formSdk: h.sdk, table: {
+        id: '400', fields: [h.field], rows: [{rowId: '500', index: 1, values: new Map()}],
+    }});
+    find(component.render(), node => node.type === 'Table').props.selection.onSelect(['500']);
+    h.setSaveResponse({status: false, code: 409, msg: '明细已删除，日志尚未确认，请重试'});
+    button(component.render(), '删除选中明细行').props.onClick();
+    await acceptChange(h);
+    const tree = component.render();
+    assert.equal(find(tree, node => node.props.role === 'alert').children[0], '明细已删除，日志尚未确认，请重试');
+    assert.equal(button(tree, '删除选中明细行').props.disabled, false);
     assert.equal(h.deletions.length, 0);
 });
 

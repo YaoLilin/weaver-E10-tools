@@ -2,6 +2,8 @@ package com.weaver.seconddev.hnweaver.common.formassist.controller;
 
 import com.weaver.common.base.entity.result.WeaResult;
 import com.weaver.seconddev.hnweaver.common.exception.FormAssistException;
+import com.weaver.seconddev.hnweaver.common.formassist.domain.FormDeletionProgressException;
+import com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormEditRequest;
 import com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormFieldDataDTO;
 import com.weaver.seconddev.hnweaver.common.formassist.service.FormFieldValueService;
 import org.junit.jupiter.api.DisplayName;
@@ -10,6 +12,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.hibernate.validator.messageinterpolation.ParameterMessageInterpolator;
+
+import javax.validation.Validation;
+import javax.validation.ValidatorFactory;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,6 +106,43 @@ class FormAssistControllerTest {
         WeaResult<Boolean> result = formAssistController.edit(request, org.mockito.Mockito.mock(javax.servlet.http.HttpServletResponse.class));
         assertFalse(result.isStatus());
         assertEquals("字段不属于当前表单", result.getMsg());
+    }
+
+    @Test
+    @DisplayName("平台已删除但日志尚未确认时返回可继续处理的业务状态")
+    void reportsDeletionProgressSeparatelyFromSaveFailure() {
+        FormEditRequest request = new FormEditRequest();
+        request.setOperation(FormEditRequest.Operation.DELETE_ROWS);
+        when(formEditService.save(request)).thenThrow(new FormDeletionProgressException("日志尚未确认"));
+
+        WeaResult<Boolean> result = formAssistController.edit(request, org.mockito.Mockito.mock(javax.servlet.http.HttpServletResponse.class));
+
+        assertFalse(result.isStatus());
+        assertEquals(409, result.getCode());
+        assertEquals("日志尚未确认", result.getMsg());
+    }
+
+    @Test
+    @DisplayName("请求绑定校验拒绝字段数组和选项数组中的空元素")
+    void rejectsNullItemsBeforeCallingService() {
+        FormEditRequest request = new FormEditRequest();
+        request.setFormId(FORM_ID);
+        request.setDataId(DATA_ID);
+        request.setModule("workflow");
+        request.setOperation(FormEditRequest.Operation.UPDATE);
+        request.setFields(Collections.singletonList(null));
+        try (ValidatorFactory factory = Validation.byDefaultProvider().configure()
+                .messageInterpolator(new ParameterMessageInterpolator()).buildValidatorFactory()) {
+            assertTrue(factory.getValidator().validate(request).stream()
+                    .anyMatch(error -> error.getPropertyPath().toString().startsWith("fields[0]")));
+
+            FormEditRequest.FieldChange field = new FormEditRequest.FieldChange();
+            field.setFieldId(300L);
+            field.setDataOptions(Collections.singletonList(null));
+            request.setFields(Collections.singletonList(field));
+            assertTrue(factory.getValidator().validate(request).stream()
+                    .anyMatch(error -> error.getPropertyPath().toString().contains("dataOptions[0]")));
+        }
     }
 
 }

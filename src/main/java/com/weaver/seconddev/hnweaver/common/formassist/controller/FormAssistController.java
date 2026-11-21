@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.weaver.common.authority.annotation.WeaPermission;
 import com.weaver.common.base.entity.result.WeaResult;
+import com.weaver.seconddev.hnweaver.common.formassist.domain.FormDeletionProgressException;
 import com.weaver.seconddev.hnweaver.common.formassist.domain.dto.FormFieldDataDTO;
 import com.weaver.seconddev.hnweaver.common.formassist.service.FormFieldValueService;
 
@@ -62,12 +63,14 @@ public class FormAssistController {
      */
     @PostMapping("/edit")
     public WeaResult<Boolean> edit(@Valid @RequestBody FormEditRequest request, HttpServletResponse response) {
-        response.setHeader("X-Form-Assist-Edit-Revision", "delete-selected-rows-v3");
+        response.setHeader("X-Form-Assist-Edit-Revision", "delete-audit-retry-v4");
         try {
             boolean saved = formEditService.save(request);
             String message = request.getOperation() == FormEditRequest.Operation.DELETE_ROWS
                     ? "明细删除成功（按选中行增量）" : "修改成功";
             return WeaResult.success(saved, message);
+        } catch (FormDeletionProgressException progress) {
+            return WeaResult.fail(FormDeletionProgressException.RESPONSE_CODE, progress.getMessage(), true);
         } catch (Exception exception) {
             log.error("表单助手保存失败，formId={}，dataId={}", request.getFormId(), request.getDataId(), exception);
             return WeaResult.fail(exception.getMessage(), exception);

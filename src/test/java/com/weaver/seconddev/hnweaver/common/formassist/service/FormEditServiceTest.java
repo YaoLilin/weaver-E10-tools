@@ -1,11 +1,16 @@
 package com.weaver.seconddev.hnweaver.common.formassist.service;
 
+import com.weaver.common.distribution.genid.IdGenerator;
+import com.weaver.common.distribution.lock.DistributionLockInterface;
 import com.weaver.common.form.api.rest.FormRestFactory;
 import com.weaver.common.form.api.rest.data.FormDataRest;
 import com.weaver.common.form.data.FormData;
+import com.weaver.common.form.data.log.FormDataLog;
 import com.weaver.common.form.data.log.FormDataLogService;
 import com.weaver.common.form.data.log.OperationType;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import com.weaver.common.form.data.detail.FormDataDetail;
 import com.weaver.common.form.dto.data.FormDataDto;
 import com.weaver.common.form.metadata.Form;
@@ -24,6 +29,8 @@ import com.weaver.workflow.core.api.rest.publicapi.WfcFormDataRest;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -42,6 +49,9 @@ class FormEditServiceTest {
     private FormEditRequest request;
     private FormEditRequest.FieldChange change;
     private MockedStatic<UserContext> users;
+    private MockedStatic<IdGenerator> ids;
+    private DistributionLockInterface lock;
+    private final Map<String, String> journal = new HashMap<>(4);
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -52,13 +62,48 @@ class FormEditServiceTest {
         formDataLog = mock(FormDataLogService.class);
         logProvider = mock(ObjectProvider.class);
         when(logProvider.getIfAvailable()).thenReturn(formDataLog);
-        service = new FormEditService(factory, fields, logProvider);
+        RedisTemplate<String, String> redis = mock(RedisTemplate.class);
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(anyString())).thenAnswer(call -> journal.get(call.getArgument(0)));
+        doAnswer(call -> {
+            journal.put(call.getArgument(0), call.getArgument(1));
+            return null;
+        }).when(values).set(anyString(), anyString(), anyLong(), eq(TimeUnit.HOURS));
+        lock = mock(DistributionLockInterface.class);
+        when(lock.isSuccessTryLock(anyString(), anyLong(), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+        ObjectProvider<DistributionLockInterface> lockProvider = mock(ObjectProvider.class);
+        when(lockProvider.getIfAvailable()).thenReturn(lock);
+        ObjectProvider<RedisTemplate<String, String>> redisProvider = mock(ObjectProvider.class);
+        when(redisProvider.getIfAvailable()).thenReturn(redis);
+        service = new FormEditService(factory, fields, new FormDeletionAudit(redisProvider, logProvider, lockProvider));
+        ids = mockStatic(IdGenerator.class);
+        ids.when(IdGenerator::generate).thenReturn(900L);
+        AtomicReference<List<FormDataLog>> writtenLogs = new AtomicReference<>(Collections.emptyList());
+        when(formDataLog.listAllFormDataLogByRecordIds(eq(Collections.singletonList(900L)), anyList()))
+                .thenAnswer(call -> writtenLogs.get());
+        doAnswer(call -> {
+            Map<Long, List<FormDataDetail>> oldValues = call.getArgument(2);
+            List<FormDataLog> savedLogs = new ArrayList<>();
+            for (FormDataDetail detail : oldValues.get(200L)) {
+                FormDataLog entry = new FormDataLog();
+                entry.setFormField(detail.getFormField());
+                entry.setSubForm(detail.getSubForm());
+                entry.setDataIndex(detail.getDataIndex());
+                savedLogs.add(entry);
+            }
+            writtenLogs.set(savedLogs);
+            return null;
+        }).when(formDataLog).sendFormDataLogMessage(eq(OperationType.SAVE), anyList(), anyMap(),
+                nullable(String.class), nullable(Long.class), any(SimpleEmployee.class));
         workflowData = mock(WfcFormDataRest.class);
         java.lang.reflect.Field workflowField = FormEditService.class.getDeclaredField("wfcFormDataRest");
         workflowField.setAccessible(true);
         workflowField.set(service, workflowData);
         admin = new SimpleEmployee();
         admin.setAdmin(true);
+        admin.setId(42L);
+        admin.setTenantKey("tenant-a");
         users = mockStatic(UserContext.class);
         users.when(UserContext::getCurrentUser).thenReturn(admin);
         when(factory.getFormDataRest("workflow")).thenReturn(rest);
@@ -85,7 +130,10 @@ class FormEditServiceTest {
     }
 
     @AfterEach
-    void cleanup() { users.close(); }
+    void cleanup() {
+        users.close();
+        ids.close();
+    }
 
     @Test @DisplayName("主表字段只提交指定字段且支持清空值")
     void savesOneField() {
@@ -186,6 +234,7 @@ class FormEditServiceTest {
         request.setFields(Collections.emptyList());
         request.setRowIds(Arrays.asList(500L, 500L));
         FormData after = new FormData();
+        after.setForm(existing.getForm());
         after.setDataDetails(Collections.emptyList());
         when(workflowData.getFullFormData(200L, admin)).thenReturn(existing, after);
         FormDataDto saved = new FormDataDto();
@@ -210,6 +259,7 @@ class FormEditServiceTest {
         existing.getDataDetails().get(0).setContent("被删除的原值");
         existing.setDataDetails(Arrays.asList(existing.getDataDetails().get(0), retained));
         FormData after = new FormData();
+        after.setForm(existing.getForm());
         after.setDataDetails(Collections.singletonList(retained));
         when(workflowData.getFullFormData(200L, admin)).thenReturn(existing, after);
         request.setOperation(FormEditRequest.Operation.DELETE_ROWS);
@@ -246,6 +296,7 @@ class FormEditServiceTest {
         retained.setRowId(501L);
         existing.setDataDetails(Arrays.asList(selected, retained));
         FormData after = new FormData();
+        after.setForm(existing.getForm());
         after.setDataDetails(Collections.singletonList(retained));
         when(factory.getFormDataRest(RpcGroup.EBUILDER_FORM.getValue())).thenReturn(rest);
         when(rest.getFullFormData(200L, admin)).thenReturn(existing, after);
@@ -303,6 +354,7 @@ class FormEditServiceTest {
         request.setFields(Collections.emptyList());
         request.setRowIds(Collections.singletonList(500L));
         FormData after = new FormData();
+        after.setForm(existing.getForm());
         FormDataDetail row = new FormDataDetail();
         row.setRowId(500L);
         after.setDataDetails(Collections.singletonList(row));
@@ -311,6 +363,93 @@ class FormEditServiceTest {
         saved.setDataId(200L);
         when(rest.saveFormDataByRowIds(any(FormDataDto.class), eq(admin))).thenReturn(saved);
         assertThrows(FormAssistException.class, () -> service.save(request));
+    }
+
+    @Test
+    @DisplayName("删除回读失败后重试只补记日志并且不会再次删除")
+    void retriesAuditAfterReadbackFailure() {
+        detailMetadata();
+        request.setOperation(FormEditRequest.Operation.DELETE_ROWS);
+        request.setSubFormId(400L);
+        request.setFields(Collections.emptyList());
+        request.setRowIds(Collections.singletonList(500L));
+        FormData after = new FormData();
+        after.setForm(existing.getForm());
+        after.setDataDetails(Collections.emptyList());
+        when(workflowData.getFullFormData(200L, admin)).thenReturn(existing)
+                .thenThrow(new IllegalStateException("回读超时")).thenReturn(after);
+
+        assertThrows(FormAssistException.class, () -> service.save(request));
+        assertFalse(journal.isEmpty());
+        assertTrue(service.save(request));
+        assertTrue(service.save(request));
+
+        verify(rest, times(1)).saveFormDataByRowIds(any(), eq(admin));
+        verify(formDataLog, times(1)).sendFormDataLogMessage(eq(OperationType.SAVE),
+                argThat(events -> Long.valueOf(900L).equals(events.get(0).getRecordId())), anyMap(),
+                isNull(), isNull(), eq(admin));
+    }
+
+    @Test
+    @DisplayName("部分删除时只记录已删除的选中行，重复确认不会再次写表单")
+    void auditsOnlyRemovedRowsWhenPlatformPartiallyDeletes() {
+        detailMetadata();
+        FormDataDetail first = existing.getDataDetails().get(0);
+        FormDataDetail remaining = first.clone();
+        remaining.setRowId(501L);
+        remaining.setDataIndex(2L);
+        existing.setDataDetails(Arrays.asList(first, remaining));
+        request.setOperation(FormEditRequest.Operation.DELETE_ROWS);
+        request.setSubFormId(400L);
+        request.setFields(Collections.emptyList());
+        request.setRowIds(Arrays.asList(500L, 501L));
+        FormData after = new FormData();
+        after.setForm(existing.getForm());
+        after.setDataDetails(Collections.singletonList(remaining));
+        when(workflowData.getFullFormData(200L, admin)).thenReturn(existing, after);
+
+        assertTrue(assertThrows(FormAssistException.class, () -> service.save(request)).getMessage().contains("仅部分"));
+        assertTrue(assertThrows(FormAssistException.class, () -> service.save(request)).getMessage().contains("仅部分"));
+        verify(rest, times(1)).saveFormDataByRowIds(any(), eq(admin));
+        verify(formDataLog, times(1)).sendFormDataLogMessage(eq(OperationType.SAVE),
+                argThat(events -> events.get(0).getDataDelRows().size() == 1
+                        && Long.valueOf(500L).equals(events.get(0).getDataDelRows().get(0).getRowId())),
+                argThat(values -> values.get(200L).size() == 1), isNull(), isNull(), eq(admin));
+    }
+
+    @Test
+    @DisplayName("日志投递失败后可确认回读并补记，保留原删除操作记录 ID")
+    void retriesAuditAfterDispatchFailure() {
+        detailMetadata();
+        request.setOperation(FormEditRequest.Operation.DELETE_ROWS);
+        request.setSubFormId(400L);
+        request.setFields(Collections.emptyList());
+        request.setRowIds(Collections.singletonList(500L));
+        FormData after = new FormData();
+        after.setForm(existing.getForm());
+        after.setDataDetails(Collections.emptyList());
+        when(workflowData.getFullFormData(200L, admin)).thenReturn(existing, after);
+        doThrow(new IllegalStateException("队列暂不可用")).when(formDataLog).sendFormDataLogMessage(
+                eq(OperationType.SAVE), anyList(), anyMap(), isNull(), isNull(), eq(admin));
+
+        assertThrows(FormAssistException.class, () -> service.save(request));
+        journal.replaceAll((key, value) -> value.replaceFirst("\"lastSentAt\":[0-9]+", "\"lastSentAt\":0"));
+        FormDataLog written = new FormDataLog();
+        written.setFormField(fields.getFieldMapByForm(RpcGroup.WORKFLOW, 100L, admin).get(300L));
+        written.setSubForm(written.getFormField().getSubForm());
+        written.setDataIndex(1L);
+        doAnswer(call -> {
+            when(formDataLog.listAllFormDataLogByRecordIds(eq(Collections.singletonList(900L)), anyList()))
+                    .thenReturn(Collections.singletonList(written));
+            return null;
+        }).when(formDataLog).sendFormDataLogMessage(eq(OperationType.SAVE), anyList(), anyMap(),
+                isNull(), isNull(), eq(admin));
+
+        assertTrue(service.save(request));
+        verify(rest, times(1)).saveFormDataByRowIds(any(), eq(admin));
+        verify(formDataLog, times(2)).sendFormDataLogMessage(eq(OperationType.SAVE),
+                argThat(events -> Long.valueOf(900L).equals(events.get(0).getRecordId())), anyMap(),
+                isNull(), isNull(), eq(admin));
     }
 
     @Test @DisplayName("平台未确认成功时返回业务错误")

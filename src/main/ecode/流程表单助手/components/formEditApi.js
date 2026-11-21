@@ -1,5 +1,7 @@
 import {devRequest} from '@weapp/ecodesdk';
 
+export const DELETION_PROGRESS_CODE = 409;
+
 /**
  * 使用管理员编辑接口持久化当前确认的增量变更。
  * @param {object} formInfo 当前表单信息
@@ -12,7 +14,9 @@ export async function saveFormChange(formInfo, change) {
         data: {formId: String(formInfo.formId), dataId: String(formInfo.dataId), module: formInfo.module, ...change},
     });
     if (!result || result.status !== true || result.data !== true) {
-        throw new Error((result && result.msg) || '平台未确认保存成功');
+        const error = new Error((result && result.msg) || '平台未确认保存成功');
+        error.code = result && result.code;
+        throw error;
     }
 }
 

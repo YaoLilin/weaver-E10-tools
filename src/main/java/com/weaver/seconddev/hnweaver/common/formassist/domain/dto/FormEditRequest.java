@@ -51,7 +51,7 @@ public class FormEditRequest {
     @NotNull
     @Size(max = 1000)
     @Valid
-    private List<FieldChange> fields = Collections.emptyList();
+    private List<@NotNull FieldChange> fields = Collections.emptyList();
     /**
      * 待删除的当前明细表行 ID。
      */
@@ -91,7 +91,7 @@ public class FormEditRequest {
         @NotNull
         @Size(max = 1000)
         @Valid
-        private List<OptionValue> dataOptions = Collections.emptyList();
+        private List<@NotNull OptionValue> dataOptions = Collections.emptyList();
     }
 
     /**
